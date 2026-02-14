@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  fastapi:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - registry-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock # Docker socket access
+    environment:
+      - DATASETS_PATH=${PWD}/server/data/datasets
+      - RESULTS_PATH=${PWD}/server/data/results
+    depends_on:
+      - registry
+  registry:
+    image: registry:2.8.3
+    networks:
+      - registry-net
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./registry-data:/var/lib/registry
+    environment:
+      - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
+
+networks:
+  registry-net:
+    driver: bridge
