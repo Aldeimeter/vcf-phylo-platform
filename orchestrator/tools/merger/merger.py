@@ -14,7 +14,7 @@ class VCFMerger:
                 command=["sh", "/app/merge-vcf.sh"],
                 volumes={
                     "/dataset": {"bind": "/data", "mode": "ro"},
-                    "/results": {"bind": "/results", "mode": "rw"},
+                    "/results/merger": {"bind": "/results", "mode": "rw"},
                 },
                 remove=True,
                 detach=False,
