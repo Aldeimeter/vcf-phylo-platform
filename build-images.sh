@@ -16,4 +16,7 @@ docker push localhost:5000/iqtree3
 docker build -t localhost:5000/fastreer ./orchestrator/tools/fastreer
 docker push localhost:5000/fastreer
 
+docker build -t localhost:5000/mrbayes ./orchestrator/tools/mrbayes
+docker push localhost:5000/mrbayes
+
 echo "All images built and pushed"

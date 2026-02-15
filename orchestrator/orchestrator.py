@@ -29,7 +29,8 @@ class Orchestrator:
     def run(self):
         self.merge()
         # self.iqtree()
-        self.fastreer()
+        # self.fastreer()
+        self.mrbayes()
 
     def merge(self):
         print("Running merger")
@@ -73,8 +74,24 @@ class Orchestrator:
 
         success = fastreer.build()
         if success:
-            print("Iqtree tree built successfully")
+            print("Fastreer tree built successfully")
             self.updateStatus(PipelineStatus.IQTREE)
+        else:
+            print("Error occured")
+            self.updateStatus(PipelineStatus.FAILED)
+
+    def mrbayes(self):
+        print("Running mrbayes")
+        self.updateStatus(PipelineStatus.MRBAYES)
+
+        from tools.mrbayes import MrBayes
+
+        mrbayes = MrBayes(self.docker_client)
+
+        success = mrbayes.build()
+        if success:
+            print("Iqtree tree built successfully")
+            self.updateStatus(PipelineStatus.MRBAYES)
         else:
             print("Error occured")
             self.updateStatus(PipelineStatus.FAILED)
