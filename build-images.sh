@@ -13,4 +13,7 @@ docker push localhost:5000/vcf-merger
 docker build -t localhost:5000/iqtree3 ./orchestrator/tools/iqtree
 docker push localhost:5000/iqtree3
 
+docker build -t localhost:5000/fastreer ./orchestrator/tools/fastreer
+docker push localhost:5000/fastreer
+
 echo "All images built and pushed"

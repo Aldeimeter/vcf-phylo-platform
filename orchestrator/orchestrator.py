@@ -22,12 +22,14 @@ class Orchestrator:
         self.run()
 
     def updateStatus(self, step: PipelineStatus):
+        # TODO: Better to have statuses as Merge : Complete | Failed | Running | Pending
         self.step = step
         # TODO: post http callback to update job status
 
     def run(self):
         self.merge()
-        self.iqtree()
+        # self.iqtree()
+        self.fastreer()
 
     def merge(self):
         print("Running merger")
@@ -54,6 +56,22 @@ class Orchestrator:
         iqtree = IqTree(self.docker_client)
 
         success = iqtree.build()
+        if success:
+            print("Iqtree tree built successfully")
+            self.updateStatus(PipelineStatus.IQTREE)
+        else:
+            print("Error occured")
+            self.updateStatus(PipelineStatus.FAILED)
+
+    def fastreer(self):
+        print("Running fastreer")
+        self.updateStatus(PipelineStatus.FASTREER)
+
+        from tools.fastreer import FastreeR
+
+        fastreer = FastreeR(self.docker_client)
+
+        success = fastreer.build()
         if success:
             print("Iqtree tree built successfully")
             self.updateStatus(PipelineStatus.IQTREE)
