@@ -27,6 +27,7 @@ class Orchestrator:
 
     def run(self):
         self.merge()
+        self.iqtree()
 
     def merge(self):
         print("Running merger")
@@ -39,6 +40,22 @@ class Orchestrator:
         success = merger.merge()
         if success:
             print("VCF files merged successfully")
+            self.updateStatus(PipelineStatus.IQTREE)
+        else:
+            print("Error occured")
+            self.updateStatus(PipelineStatus.FAILED)
+
+    def iqtree(self):
+        print("Running iqtree")
+        self.updateStatus(PipelineStatus.IQTREE)
+
+        from tools.iqtree import IqTree
+
+        iqtree = IqTree(self.docker_client)
+
+        success = iqtree.build()
+        if success:
+            print("Iqtree tree built successfully")
             self.updateStatus(PipelineStatus.IQTREE)
         else:
             print("Error occured")

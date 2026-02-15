@@ -1,0 +1,24 @@
+class IqTree:
+    def __init__(self, docker_client):
+        self.docker_client = docker_client
+        self.image_name = "registry:5000/iqtree3"
+
+    def build(self):
+        try:
+            print(f"Pulling {self.image_name} image")
+            self.docker_client.images.pull(self.image_name)
+            print("Image pulled")
+            result = self.docker_client.containers.run(
+                image=self.image_name,
+                command=["sh", "/app/run-iqtree.sh"],
+                volumes={
+                    "/results/merger": {"bind": "/data", "mode": "ro"},
+                    "/results/iqtree": {"bind": "/results", "mode": "rw"},
+                },
+                remove=True,
+                detach=False,
+            )
+            return True
+        except Exception as e:
+            print(f"IQ-TREE failed: {e}")
+            return False
