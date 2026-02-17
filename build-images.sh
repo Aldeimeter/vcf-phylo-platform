@@ -19,4 +19,7 @@ docker push localhost:5000/fastreer
 docker build -t localhost:5000/mrbayes ./orchestrator/tools/mrbayes
 docker push localhost:5000/mrbayes
 
+docker build -t localhost:5000/comparison ./orchestrator/tools/comparison
+docker push localhost:5000/comparison
+
 echo "All images built and pushed"

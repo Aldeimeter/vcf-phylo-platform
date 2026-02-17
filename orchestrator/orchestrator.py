@@ -28,9 +28,10 @@ class Orchestrator:
 
     def run(self):
         self.merge()
-        # self.iqtree()
-        # self.fastreer()
+        self.iqtree()
+        self.fastreer()
         self.mrbayes()
+        self.compare()
 
     def merge(self):
         print("Running merger")
@@ -90,8 +91,24 @@ class Orchestrator:
 
         success = mrbayes.build()
         if success:
-            print("Iqtree tree built successfully")
+            print("Mrbayes tree built successfully")
             self.updateStatus(PipelineStatus.MRBAYES)
+        else:
+            print("Error occured")
+            self.updateStatus(PipelineStatus.FAILED)
+
+    def compare(self):
+        print("Running comparison")
+        self.updateStatus(PipelineStatus.COMPARISON)
+
+        from tools.comparison import Comparison
+
+        comparison = Comparison(self.docker_client)
+
+        success = comparison.run()
+        if success:
+            print("Comparison ran successfully")
+            self.updateStatus(PipelineStatus.COMPLETED)
         else:
             print("Error occured")
             self.updateStatus(PipelineStatus.FAILED)
