@@ -1,16 +1,35 @@
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 import docker
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-class PipelineStatus(Enum):
-    MERGE = "merge"
-    IQTREE = "iqtree"
-    FASTREER = "fastreer"
-    MRBAYES = "mrbayes"
-    COMPARISON = "comparison"
-    FAILED = "failed"
+class ToolStatuses(Enum):
+    PENDING = "pending"
+    RUNNING = "running"
     COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class PipelineStage(Enum):
+    MERGE = "merge"
+    PARALLEL_INFERENCE = "parallel_inference"
+    COMPARISON = "comparison"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass
+class PipelineStatus:
+    stage: PipelineStage = PipelineStage.MERGE
+
+    merger: ToolStatuses = ToolStatuses.PENDING
+    iqtree: ToolStatuses = ToolStatuses.PENDING
+    fastreer: ToolStatuses = ToolStatuses.PENDING
+    mrbayes: ToolStatuses = ToolStatuses.PENDING
+    comparison: ToolStatuses = ToolStatuses.PENDING
 
 
 class Orchestrator:
@@ -19,96 +38,99 @@ class Orchestrator:
         self.job_id = job_id
         self.started_at = datetime.now()
         self.completed_at = None
+
+        self.pipeline_status = PipelineStatus()
+        self.status_lock = threading.Lock()
+
         self.run()
 
-    def updateStatus(self, step: PipelineStatus):
-        # TODO: Better to have statuses as Merge : Complete | Failed | Running | Pending
-        self.step = step
-        # TODO: post http callback to update job status
+    def update_tool_status(self, tool_name: str, status: ToolStatuses):
+        with self.status_lock:
+            setattr(self.pipeline_status, tool_name, status)
+            print(f"[{datetime.now()}] {tool_name}: {status.value}")
+            # TODO: add http callback
+
+    def update_pipeline_stage(self, stage: PipelineStage):
+        with self.status_lock:
+            self.pipeline_status.stage = stage
+            print(f"[{datetime.now()}] Pipeline stage: {stage.value}")
 
     def run(self):
-        self.merge()
-        self.iqtree()
-        self.fastreer()
-        self.mrbayes()
-        self.compare()
+        try:
+            if not self._run_tool("merger"):
+                raise Exception("Merger failed")
 
-    def merge(self):
-        print("Running merger")
-        self.updateStatus(PipelineStatus.MERGE)
+            self.update_pipeline_stage(PipelineStage.PARALLEL_INFERENCE)
+            if not self.run_parallel_inference():
+                raise Exception("Inference failed")
 
-        from tools.merger import VCFMerger
+            self.update_pipeline_stage(PipelineStage.COMPARISON)
+            if not self._run_tool("comparison"):
+                raise Exception("Comparison failed")
 
-        merger = VCFMerger(self.docker_client)
+            self.update_pipeline_stage(PipelineStage.COMPLETED)
 
-        success = merger.merge()
-        if success:
-            print("VCF files merged successfully")
-            self.updateStatus(PipelineStatus.IQTREE)
-        else:
-            print("Error occured")
-            self.updateStatus(PipelineStatus.FAILED)
+        except Exception as e:
+            print(f"Pipeline failed with exception: {e}")
+            self.update_pipeline_stage(PipelineStage.FAILED)
 
-    def iqtree(self):
-        print("Running iqtree")
-        self.updateStatus(PipelineStatus.IQTREE)
+        self.completed_at = datetime.now()
 
-        from tools.iqtree import IqTree
+    def _run_tool(self, tool_name: str):
+        tool_mapping = {
+            "iqtree": ("tools.iqtree", "IqTree"),
+            "fastreer": ("tools.fastreer", "FastreeR"),
+            "mrbayes": ("tools.mrbayes", "MrBayes"),
+            "comparison": ("tools.comparison", "Comparison"),
+            "merger": ("tools.merger", "Merger"),
+        }
 
-        iqtree = IqTree(self.docker_client)
+        if tool_name not in tool_mapping:
+            print(f"Unknown tool: {tool_name}")
+            return False
 
-        success = iqtree.build()
-        if success:
-            print("Iqtree tree built successfully")
-            self.updateStatus(PipelineStatus.IQTREE)
-        else:
-            print("Error occured")
-            self.updateStatus(PipelineStatus.FAILED)
+        self.update_tool_status(tool_name, ToolStatuses.RUNNING)
 
-    def fastreer(self):
-        print("Running fastreer")
-        self.updateStatus(PipelineStatus.FASTREER)
+        try:
+            print(f"[Thread-{threading.current_thread().name}] Starting {tool_name}")
+            module_name, class_name = tool_mapping[tool_name]
+            module = __import__(module_name, fromlist=[class_name])
+            tool_class = getattr(module, class_name)
 
-        from tools.fastreer import FastreeR
+            tool = tool_class(self.docker_client)
+            return tool.run()
 
-        fastreer = FastreeR(self.docker_client)
+        except Exception as e:
+            print(f"{tool_name} failed: {e}")
+            return False
 
-        success = fastreer.build()
-        if success:
-            print("Fastreer tree built successfully")
-            self.updateStatus(PipelineStatus.IQTREE)
-        else:
-            print("Error occured")
-            self.updateStatus(PipelineStatus.FAILED)
+    def run_parallel_inference(self) -> bool:
+        inference_tools = ["iqtree", "fastreer", "mrbayes"]
 
-    def mrbayes(self):
-        print("Running mrbayes")
-        self.updateStatus(PipelineStatus.MRBAYES)
+        with ThreadPoolExecutor(
+            max_workers=3, thread_name_prefix="inference"
+        ) as executor:
+            future_to_tool = {
+                executor.submit(self._run_tool, tool_name): tool_name
+                for tool_name in inference_tools
+            }
 
-        from tools.mrbayes import MrBayes
+            for future in as_completed(future_to_tool):
+                tool_name = future_to_tool[future]
+                try:
+                    success = future.result()
+                    status = ToolStatuses.COMPLETED if success else ToolStatuses.FAILED
+                    self.update_tool_status(tool_name, status)
+                except Exception as e:
+                    print(f"{tool_name} failed with exception: {e}")
+                    self.update_tool_status(tool_name, ToolStatuses.FAILED)
+        return self.any_inference_succeeded()
 
-        mrbayes = MrBayes(self.docker_client)
-
-        success = mrbayes.build()
-        if success:
-            print("Mrbayes tree built successfully")
-            self.updateStatus(PipelineStatus.MRBAYES)
-        else:
-            print("Error occured")
-            self.updateStatus(PipelineStatus.FAILED)
-
-    def compare(self):
-        print("Running comparison")
-        self.updateStatus(PipelineStatus.COMPARISON)
-
-        from tools.comparison import Comparison
-
-        comparison = Comparison(self.docker_client)
-
-        success = comparison.run()
-        if success:
-            print("Comparison ran successfully")
-            self.updateStatus(PipelineStatus.COMPLETED)
-        else:
-            print("Error occured")
-            self.updateStatus(PipelineStatus.FAILED)
+    def any_inference_succeeded(self) -> bool:
+        return any(
+            [
+                self.pipeline_status.iqtree == ToolStatuses.COMPLETED,
+                self.pipeline_status.fastreer == ToolStatuses.COMPLETED,
+                self.pipeline_status.mrbayes == ToolStatuses.COMPLETED,
+            ]
+        )
