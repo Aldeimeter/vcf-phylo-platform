@@ -1,1 +1,1 @@
-from .merger import VCFMerger
+from .merger import Merger

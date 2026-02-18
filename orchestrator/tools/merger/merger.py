@@ -1,9 +1,9 @@
-class VCFMerger:
+class Merger:
     def __init__(self, docker_client):
         self.docker_client = docker_client
         self.image_name = "registry:5000/vcf-merger"
 
-    def merge(self):
+    def run(self):
         try:
             print("Pulling merger image")
             self.docker_client.images.pull(self.image_name)

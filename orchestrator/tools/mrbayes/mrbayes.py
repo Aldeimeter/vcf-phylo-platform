@@ -3,7 +3,7 @@ class MrBayes:
         self.docker_client = docker_client
         self.image_name = "registry:5000/mrbayes"
 
-    def build(self):
+    def run(self):
         try:
             print(f"Pulling {self.image_name} image")
             self.docker_client.images.pull(self.image_name)
