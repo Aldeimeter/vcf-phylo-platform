@@ -1,8 +1,7 @@
 import json
 from pathlib import Path
-from datetime import datetime
 from typing import Dict, List, Optional
-from app.models.job import Job, JobStatus
+from app.models.job import Job
 
 
 class JobStorage:

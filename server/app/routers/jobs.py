@@ -1,11 +1,14 @@
 import os
 from datetime import datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from typing import Optional
+
 from pydantic import BaseModel
 
 from app.services.docker import client
-from app.services.job_storage import job_storage, JobStatus
+from app.models.job import JobStatus, PipelineStatus
+from app.services.job_storage import job_storage
 from pathlib import Path
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -34,3 +37,27 @@ def create_job(request_body: CreateRequestBody):
         detach=True,
     )
     return {"job_id": job.id}
+
+
+class StatusUpdateBody(BaseModel):
+    status: Optional[JobStatus] = None
+    pipeline_status: Optional[PipelineStatus] = None
+    error: Optional[str] = None
+
+
+@router.post("/{job_id}/status")
+def update_job_status(job_id: str, update: StatusUpdateBody):
+    job = job_storage.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    updates = update.model_dump(exclude_unset=True)
+
+    if updates.get("status"):
+        if updates["status"] == JobStatus.RUNNING and job.status == JobStatus.PENDING:
+            updates["started_at"] = datetime.now()
+        elif updates["status"] in [JobStatus.COMPLETED, JobStatus.FAILED]:
+            updates["completed_at"] = datetime.now()
+
+    job_storage.update_job(job_id, **updates)
+    return {"success": True}
