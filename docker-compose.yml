@@ -11,6 +11,7 @@ services:
       - registry-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Docker socket access
+      - ./server/data:/app/data
     environment:
       - DATASETS_PATH=${PWD}/server/data/datasets
       - RESULTS_PATH=${PWD}/server/data/results

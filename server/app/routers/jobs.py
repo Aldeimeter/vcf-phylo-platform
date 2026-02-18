@@ -1,10 +1,11 @@
 import os
-from uuid import uuid4
+from datetime import datetime
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.services.docker import client
+from app.services.job_storage import job_storage, JobStatus
 from pathlib import Path
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -16,12 +17,13 @@ class CreateRequestBody(BaseModel):
 
 @router.post("/create")
 def create_job(request_body: CreateRequestBody):
-    job_id = str(uuid4())
+    job = job_storage.create_job(request_body.dataset_id)
+    job_storage.update_job(job.id, status=JobStatus.RUNNING, started_at=datetime.now())
     dataset_path = str(Path(os.environ["DATASETS_PATH"], request_body.dataset_id))
-    results_path = str(Path(os.environ["RESULTS_PATH"], job_id))
-    container = client.containers.run(
+    results_path = str(Path(os.environ["RESULTS_PATH"], job.id))
+    client.containers.run(
         image="orchestrator:latest",
-        command=["python", "/app/main.py", job_id],
+        command=["python", "/app/main.py", job.id],
         volumes={
             dataset_path: {"bind": "/dataset", "mode": "ro"},
             results_path: {"bind": "/results", "mode": "rw"},
@@ -29,7 +31,6 @@ def create_job(request_body: CreateRequestBody):
         network="project_registry-net",
         remove=True,
         privileged=True,
-        detach=False,
+        detach=True,
     )
-    output = container.decode("utf-8")
-    return {"output": output}
+    return {"job_id": job.id}
