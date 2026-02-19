@@ -70,3 +70,35 @@ def get_job_status(job_id: str):
         raise HTTPException(status_code=404, detail="Job not found")
 
     return job
+
+
+@router.get("/{job_id}/results")
+def get_job_results(job_id: str):
+    job = job_storage.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    results_path = Path(os.environ["STATIC_PATH"], job_id)
+    if not results_path:
+        raise HTTPException(status_code=404, detail="Results directory not found")
+
+    nwk_files = []
+    results_json = None
+
+    for tool_dir in results_path.iterdir():
+        if tool_dir.is_dir():
+            for nwk_file in tool_dir.glob("*.nwk"):
+                nwk_files.append(
+                    {
+                        "tool": tool_dir.name,
+                        "filename": nwk_file.name,
+                        "url": f"/static/results/{job_id}/{tool_dir.name}/{nwk_file.name}",
+                    }
+                )
+            json_file = tool_dir / "results.json"
+            if json_file.exists():
+                results_json = {
+                    "tool": tool_dir.name,
+                    "filename": "results.json",
+                    "url": f"/static/results/{job_id}/{tool_dir.name}/results.json",
+                }
+    return {"job_id": job_id, "nwk_files": nwk_files, "results_json": results_json}

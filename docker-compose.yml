@@ -15,6 +15,7 @@ services:
     environment:
       - DATASETS_PATH=${PWD}/server/data/datasets
       - RESULTS_PATH=${PWD}/server/data/results
+      - STATIC_PATH=/app/data/results
     depends_on:
       - registry
   registry:
