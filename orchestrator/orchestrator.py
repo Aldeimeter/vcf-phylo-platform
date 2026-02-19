@@ -8,6 +8,13 @@ import os
 import requests
 
 
+class JobStatus(str, Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class ToolStatuses(Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -15,18 +22,8 @@ class ToolStatuses(Enum):
     FAILED = "failed"
 
 
-class PipelineStage(Enum):
-    MERGE = "merge"
-    PARALLEL_INFERENCE = "parallel_inference"
-    COMPARISON = "comparison"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
 @dataclass
 class PipelineStatus:
-    stage: PipelineStage = PipelineStage.MERGE
-
     merger: ToolStatuses = ToolStatuses.PENDING
     iqtree: ToolStatuses = ToolStatuses.PENDING
     fastreer: ToolStatuses = ToolStatuses.PENDING
@@ -51,15 +48,8 @@ class Orchestrator:
             setattr(self.pipeline_status, tool_name, status)
             print(f"[{datetime.now()}] {tool_name}: {status.value}")
             self.update_job_status()
-            # TODO: add http callback
 
-    def update_pipeline_stage(self, stage: PipelineStage):
-        with self.status_lock:
-            self.pipeline_status.stage = stage
-            print(f"[{datetime.now()}] Pipeline stage: {stage.value}")
-            self.update_job_status()
-
-    def update_job_status(self, status: str = None, error: str = None):
+    def update_job_status(self, status: JobStatus = None, error: str = None):
         fastapi_url = os.environ.get("FASTAPI_URL", "http://fastapi:8000")
         payload = {}
 
@@ -79,30 +69,25 @@ class Orchestrator:
                 timeout=10,
             )
             response.raise_for_status()
-            print(f"Updated job {self.job_id} status to {status}")
         except requests.exceptions.RequestException as e:
             print(f"Failed to update job status: {e}")
 
     def run(self):
         try:
+            self.update_job_status(JobStatus.RUNNING)
             if not self._run_tool("merger"):
                 raise Exception("Merger failed")
 
-            self.update_pipeline_stage(PipelineStage.PARALLEL_INFERENCE)
             if not self.run_parallel_inference():
                 raise Exception("Inference failed")
 
-            self.update_pipeline_stage(PipelineStage.COMPARISON)
             if not self._run_tool("comparison"):
                 raise Exception("Comparison failed")
 
-            self.update_pipeline_stage(PipelineStage.COMPLETED)
-
+            self.update_job_status(JobStatus.COMPLETED)
         except Exception as e:
             print(f"Pipeline failed with exception: {e}")
-            self.update_pipeline_stage(PipelineStage.FAILED)
-
-        self.completed_at = datetime.now()
+            self.update_job_status(JobStatus.FAILED)
 
     def _run_tool(self, tool_name: str):
         tool_mapping = {

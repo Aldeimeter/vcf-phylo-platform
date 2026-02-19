@@ -19,17 +19,7 @@ class ToolStatuses(str, Enum):
     FAILED = "failed"
 
 
-class PipelineStage(str, Enum):
-    MERGE = "merge"
-    PARALLEL_INFERENCE = "parallel_inference"
-    COMPARISON = "comparison"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
 class PipelineStatus(BaseModel):
-    stage: PipelineStage = PipelineStage.MERGE
-
     merger: ToolStatuses = ToolStatuses.PENDING
     iqtree: ToolStatuses = ToolStatuses.PENDING
     fastreer: ToolStatuses = ToolStatuses.PENDING
