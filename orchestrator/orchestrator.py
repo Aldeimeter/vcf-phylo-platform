@@ -4,6 +4,8 @@ from enum import Enum
 import docker
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import os
+import requests
 
 
 class ToolStatuses(Enum):
@@ -48,12 +50,38 @@ class Orchestrator:
         with self.status_lock:
             setattr(self.pipeline_status, tool_name, status)
             print(f"[{datetime.now()}] {tool_name}: {status.value}")
+            self.update_job_status()
             # TODO: add http callback
 
     def update_pipeline_stage(self, stage: PipelineStage):
         with self.status_lock:
             self.pipeline_status.stage = stage
             print(f"[{datetime.now()}] Pipeline stage: {stage.value}")
+            self.update_job_status()
+
+    def update_job_status(self, status: str = None, error: str = None):
+        fastapi_url = os.environ.get("FASTAPI_URL", "http://fastapi:8000")
+        payload = {}
+
+        if status:
+            payload["status"] = status
+        payload["pipeline_status"] = {
+            field.name: getattr(self.pipeline_status, field.name).value
+            for field in self.pipeline_status.__dataclass_fields__.values()
+        }
+
+        if error:
+            payload["error"] = error
+        try:
+            response = requests.post(
+                f"{fastapi_url}/jobs/{self.job_id}/status",
+                json=payload,
+                timeout=10,
+            )
+            response.raise_for_status()
+            print(f"Updated job {self.job_id} status to {status}")
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to update job status: {e}")
 
     def run(self):
         try:
@@ -98,10 +126,18 @@ class Orchestrator:
             tool_class = getattr(module, class_name)
 
             tool = tool_class(self.docker_client)
-            return tool.run()
+            success = tool.run()
+
+            if success:
+                self.update_tool_status(tool_name, ToolStatuses.COMPLETED)
+            else:
+                self.update_tool_status(tool_name, ToolStatuses.FAILED)
+
+            return success
 
         except Exception as e:
             print(f"{tool_name} failed: {e}")
+            self.update_tool_status(tool_name, ToolStatuses.FAILED)
             return False
 
     def run_parallel_inference(self) -> bool:
@@ -118,12 +154,10 @@ class Orchestrator:
             for future in as_completed(future_to_tool):
                 tool_name = future_to_tool[future]
                 try:
-                    success = future.result()
-                    status = ToolStatuses.COMPLETED if success else ToolStatuses.FAILED
-                    self.update_tool_status(tool_name, status)
+                    future.result()
                 except Exception as e:
                     print(f"{tool_name} failed with exception: {e}")
-                    self.update_tool_status(tool_name, ToolStatuses.FAILED)
+
         return self.any_inference_succeeded()
 
     def any_inference_succeeded(self) -> bool:
