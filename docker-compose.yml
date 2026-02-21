@@ -18,6 +18,18 @@ services:
       - STATIC_PATH=/app/data/results
     depends_on:
       - registry
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - registry-net
+    depends_on:
+      - fastapi
+    environment:
+      - BACKEND_URL=http://fastapi:8000
   registry:
     image: registry:2.8.3
     networks:
