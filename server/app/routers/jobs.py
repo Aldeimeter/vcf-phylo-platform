@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from typing import Optional
 
 from pydantic import BaseModel
@@ -102,3 +102,21 @@ def get_job_results(job_id: str):
                     "url": f"/static/results/{job_id}/{tool_dir.name}/results.json",
                 }
     return {"job_id": job_id, "nwk_files": nwk_files, "results_json": results_json}
+
+
+@router.get("")
+def list_jobs(
+    dataset_id: Optional[str] = Query(None, description="Filter jobs by dataset ID"),
+    sort_order: Optional[str] = Query(
+        "desc", description="Sort order: 'asc' for ascending, 'desc' for descending"
+    ),
+):
+    jobs = job_storage.list_jobs()
+
+    if dataset_id:
+        jobs = [job for job in jobs if job.dataset_id == dataset_id]
+
+    reverse_order = sort_order.lower() != "asc"
+    jobs.sort(key=lambda job: job.created_at, reverse=reverse_order)
+
+    return {"jobs": jobs}
