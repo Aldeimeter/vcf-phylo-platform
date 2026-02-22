@@ -91,6 +91,57 @@ def get_all_jobs(
         return []
 
 
+def get_job_logs(job_id: str) -> List[Dict[str, Any]]:
+    """Get logs for a specific job"""
+    try:
+        response = requests.get(f"{BACKEND_URL}/logs/{job_id}/history")
+        if response.status_code == 200:
+            return response.json().get("logs", [])
+        return []
+    except Exception as e:
+        print(f"Logs fetch failed: {e}")
+        return []
+
+
+def format_log_entry(log: Dict[str, Any]) -> str:
+    """Format a single log entry for display"""
+    try:
+        timestamp = log.get("timestamp", "")
+        if "T" in timestamp:
+            # Convert ISO format to just time
+            from datetime import datetime
+            dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            time_str = dt.strftime("%H:%M:%S")
+        else:
+            time_str = timestamp
+        
+        tool = (log.get("tool", "orchestrator") or "orchestrator").upper()
+        message = log.get("message", "")
+        level = log.get("level", "info")
+        
+        # Color coding with better contrast for light background
+        if level == "error":
+            prefix = "❌"
+        elif tool == "ORCHESTRATOR":
+            prefix = "🔧"
+        elif tool == "MERGER":
+            prefix = "🔗"
+        elif tool == "IQTREE":
+            prefix = "🌳"
+        elif tool == "MRBAYES":
+            prefix = "🧬"
+        elif tool == "COMPARISON":
+            prefix = "📊"
+        elif tool == "FASTREER":
+            prefix = "🏃"
+        else:
+            prefix = "ℹ️"
+        
+        return f"{time_str} {prefix} [{tool}] {message}"
+    except Exception as e:
+        return f"[Error formatting log: {e}]"
+
+
 # Utility Functions
 def format_number(num) -> str:
     """Format numbers for display"""
@@ -254,11 +305,67 @@ def app_ui(request: Request):
                 .job-item:hover {
                     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
                 }
+                
+                /* Hide scrollbar for log container */
+                #log-container::-webkit-scrollbar {
+                    display: none;
+                }
             """),
             ui.tags.script("""
                 function redirectToJob(jobId) {
                     window.location.href = '?page=job&job_id=' + jobId;
                 }
+                
+                // Log scroll preservation with MutationObserver
+                let userScrolledUp = false;
+                let logContainer = null;
+                
+                function setupLogScrollBehavior() {
+                    logContainer = document.getElementById('log-container');
+                    if (!logContainer) return;
+                    
+                    // Track user scroll behavior
+                    logContainer.addEventListener('scroll', function() {
+                        const isAtBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 50;
+                        userScrolledUp = !isAtBottom;
+                    });
+                    
+                    // Monitor for content changes in the log container
+                    const logObserver = new MutationObserver(function(mutations) {
+                        mutations.forEach(function(mutation) {
+                            if (mutation.type === 'childList' || mutation.type === 'subtree') {
+                                // Check if user was at bottom before content changed
+                                setTimeout(function() {
+                                    if (logContainer && !userScrolledUp) {
+                                        logContainer.scrollTop = logContainer.scrollHeight;
+                                    }
+                                }, 10);
+                            }
+                        });
+                    });
+                    
+                    logObserver.observe(logContainer, {
+                        childList: true,
+                        subtree: true,
+                        characterData: true
+                    });
+                }
+                
+                // Setup when page loads
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Use MutationObserver to detect when log container is added to DOM
+                    const pageObserver = new MutationObserver(function(mutations) {
+                        const container = document.getElementById('log-container');
+                        if (container && !container.hasLogSetup) {
+                            container.hasLogSetup = true;
+                            setupLogScrollBehavior();
+                        }
+                    });
+                    pageObserver.observe(document.body, { childList: true, subtree: true });
+                    
+                    // Try setup immediately in case container already exists
+                    setTimeout(setupLogScrollBehavior, 100);
+                });
             """),
         ),
         # Navigation
@@ -299,6 +406,9 @@ def server(input, output, session):
     # Filter state
     jobs_filter_dataset = reactive.value("")
     jobs_sort_order = reactive.value("desc")
+    # Logs data
+    current_logs = reactive.value("")
+    logs_last_seen_timestamp = reactive.value(0)
 
     # Load initial data
     @reactive.effect
@@ -354,11 +464,50 @@ def server(input, output, session):
         except Exception as e:
             print(f"[POLL] Error polling job {job_id[:8]}: {e}")
 
+    # Log polling for job pages
+    @reactive.effect
+    def poll_job_logs():
+        job_id = input.current_job_id()
+        page = input.current_page()
+        
+        # Only poll logs when on a job page
+        if page != "job" or not job_id:
+            current_logs.set("")
+            return
+
+        # Poll every 2 seconds
+        reactive.invalidate_later(POLL_INTERVAL)
+
+        try:
+            logs = get_job_logs(job_id)
+            if logs:
+                # Format logs for display (chronological order)
+                formatted_logs = []
+                for log in logs[-50:]:  # Show last 50 logs
+                    formatted_logs.append(format_log_entry(log))
+                
+                log_text = "\n".join(formatted_logs)
+                
+                # Only update if content has actually changed
+                if log_text != current_logs.get():
+                    current_logs.set(log_text)
+            else:
+                if current_logs.get() != "No logs available yet...":
+                    current_logs.set("No logs available yet...")
+        except Exception as e:
+            error_msg = f"Error loading logs: {e}"
+            if current_logs.get() != error_msg:
+                current_logs.set(error_msg)
+
     # Main page content router
     @render.ui
     def page_content():
         page = input.current_page()
         job_id = input.current_job_id()
+        
+        # Clear logs when navigating away from job pages
+        if page != "job":
+            current_logs.set("")
 
         if page == "analysis" or page == "":
             return render_analysis_page()
@@ -535,6 +684,17 @@ def server(input, output, session):
             ),
         ]
 
+        # Add logs section
+        content.append(ui.hr())
+        content.append(ui.h3("Live Logs"))
+        content.append(
+            ui.div(
+                ui.output_text_verbatim("job_logs"),
+                id="log-container",
+                style="height: 400px; overflow-y: auto; background: #f8f9fa; color: #212529; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.4; scrollbar-width: none; -ms-overflow-style: none;"
+            )
+        )
+
         # Add results if available
         if results_data:
             content.append(ui.hr())
@@ -689,6 +849,11 @@ def server(input, output, session):
             jobs_list.set(filtered_jobs)
         except:
             pass  # Inputs might not exist on other pages
+
+    # Render logs output
+    @render.text
+    def job_logs():
+        return current_logs.get()
 
 
 # Create the app with URL bookmarking enabled
