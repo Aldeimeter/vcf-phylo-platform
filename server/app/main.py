@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from .routers import datasets, jobs
+from .routers import datasets, jobs, logs
 from .database import database
 
 
@@ -30,6 +30,7 @@ app.mount(
 )
 app.include_router(datasets.router)
 app.include_router(jobs.router)
+app.include_router(logs.router)
 
 
 @app.get("/")
