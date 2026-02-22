@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import time
 from datetime import datetime
 from enum import Enum
 import docker
@@ -23,6 +24,15 @@ class ToolStatuses(Enum):
 
 
 @dataclass
+class ToolsTiming:
+    merger: float = None
+    iqtree: float = None
+    fastreer: float = None
+    mrbayes: float = None
+    comparison: float = None
+
+
+@dataclass
 class PipelineStatus:
     merger: ToolStatuses = ToolStatuses.PENDING
     iqtree: ToolStatuses = ToolStatuses.PENDING
@@ -40,6 +50,7 @@ class Orchestrator:
 
         self.pipeline_status = PipelineStatus()
         self.status_lock = threading.Lock()
+        self.tools_timing = ToolsTiming()
 
         self.run()
 
@@ -72,6 +83,18 @@ class Orchestrator:
         except requests.exceptions.RequestException as e:
             print(f"Failed to update job status: {e}")
 
+    def return_tools_timing(self):
+        fastapi_url = os.environ.get("FASTAPI_URL", "http://fastapi:8000")
+
+        payload = {"tools_timing": asdict(self.tools_timing)}
+        try:
+            response = requests.post(
+                f"{fastapi_url}/jobs/{self.job_id}/timing", json=payload, timeout=10
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"Failed to update job timing: {e}")
+
     def run(self):
         try:
             self.update_job_status(JobStatus.RUNNING)
@@ -88,6 +111,8 @@ class Orchestrator:
         except Exception as e:
             print(f"Pipeline failed with exception: {e}")
             self.update_job_status(JobStatus.FAILED)
+        finally:
+            self.return_tools_timing()
 
     def _run_tool(self, tool_name: str):
         tool_mapping = {
@@ -104,6 +129,7 @@ class Orchestrator:
 
         self.update_tool_status(tool_name, ToolStatuses.RUNNING)
 
+        start_time = time.time()
         try:
             print(f"[Thread-{threading.current_thread().name}] Starting {tool_name}")
             module_name, class_name = tool_mapping[tool_name]
@@ -124,6 +150,10 @@ class Orchestrator:
             print(f"{tool_name} failed: {e}")
             self.update_tool_status(tool_name, ToolStatuses.FAILED)
             return False
+        finally:
+            end_time = time.time()
+            execution_time = round(end_time - start_time, 1)
+            setattr(self.tools_timing, tool_name, execution_time)
 
     def run_parallel_inference(self) -> bool:
         inference_tools = ["iqtree", "fastreer", "mrbayes"]

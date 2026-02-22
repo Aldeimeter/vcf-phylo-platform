@@ -19,6 +19,14 @@ class ToolStatuses(str, Enum):
     FAILED = "failed"
 
 
+class ToolsTiming(BaseModel):
+    merger: float = None
+    iqtree: float = None
+    fastreer: float = None
+    mrbayes: float = None
+    comparison: float = None
+
+
 class PipelineStatus(BaseModel):
     merger: ToolStatuses = ToolStatuses.PENDING
     iqtree: ToolStatuses = ToolStatuses.PENDING
@@ -36,3 +44,4 @@ class Job(BaseModel):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
+    tools_timing: Optional[ToolsTiming] = None

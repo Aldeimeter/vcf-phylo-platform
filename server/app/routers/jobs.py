@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from app.services.docker import client
-from app.models.job import JobStatus, PipelineStatus
+from app.models.job import JobStatus, PipelineStatus, ToolsTiming
 from app.services.job_storage import job_storage
 from pathlib import Path
 
@@ -120,3 +120,18 @@ def list_jobs(
     jobs.sort(key=lambda job: job.created_at, reverse=reverse_order)
 
     return {"jobs": jobs}
+
+
+class CreateJobTimingRequest(BaseModel):
+    tools_timing: ToolsTiming
+
+
+@router.post("/{job_id}/timing")
+def create_job_timing(request_body: CreateJobTimingRequest, job_id: str):
+    job = job_storage.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job_storage.update_job(job.id, tools_timing=request_body.tools_timing)
+
+    return {"success": True}
