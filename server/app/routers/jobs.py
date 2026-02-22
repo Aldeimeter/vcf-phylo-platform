@@ -19,14 +19,17 @@ class CreateRequestBody(BaseModel):
 
 
 @router.post("/create")
-def create_job(request_body: CreateRequestBody):
-    job = job_storage.create_job(request_body.dataset_id)
-    job_storage.update_job(job.id, status=JobStatus.RUNNING, started_at=datetime.now())
+async def create_job(request_body: CreateRequestBody):
+    job = await job_storage.create_job(request_body.dataset_id)
+    await job_storage.update_job(
+        job.id, status=JobStatus.RUNNING, started_at=datetime.now()
+    )
+    job_id = str(job.id)
     dataset_path = str(Path(os.environ["DATASETS_PATH"], request_body.dataset_id))
-    results_path = str(Path(os.environ["RESULTS_PATH"], job.id))
+    results_path = str(Path(os.environ["RESULTS_PATH"], job_id))
     client.containers.run(
         image="orchestrator:latest",
-        command=["python", "/app/main.py", job.id],
+        command=["python", "/app/main.py", job_id],
         volumes={
             dataset_path: {"bind": "/dataset", "mode": "ro"},
             results_path: {"bind": "/results", "mode": "rw"},
@@ -36,7 +39,7 @@ def create_job(request_body: CreateRequestBody):
         privileged=True,
         detach=True,
     )
-    return {"job_id": job.id}
+    return {"job_id": job_id}
 
 
 class StatusUpdateBody(BaseModel):
@@ -46,8 +49,8 @@ class StatusUpdateBody(BaseModel):
 
 
 @router.post("/{job_id}/status")
-def update_job_status(job_id: str, update: StatusUpdateBody):
-    job = job_storage.get_job(job_id)
+async def update_job_status(job_id: str, update: StatusUpdateBody):
+    job = await job_storage.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -59,13 +62,13 @@ def update_job_status(job_id: str, update: StatusUpdateBody):
         elif updates["status"] in [JobStatus.COMPLETED, JobStatus.FAILED]:
             updates["completed_at"] = datetime.now()
 
-    job_storage.update_job(job_id, **updates)
+    await job_storage.update_job(job_id, **updates)
     return {"success": True}
 
 
 @router.get("/{job_id}/status")
-def get_job_status(job_id: str):
-    job = job_storage.get_job(job_id)
+async def get_job_status(job_id: str):
+    job = await job_storage.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -73,8 +76,8 @@ def get_job_status(job_id: str):
 
 
 @router.get("/{job_id}/results")
-def get_job_results(job_id: str):
-    job = job_storage.get_job(job_id)
+async def get_job_results(job_id: str):
+    job = await job_storage.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     results_path = Path(os.environ["STATIC_PATH"], job_id)
@@ -105,13 +108,13 @@ def get_job_results(job_id: str):
 
 
 @router.get("")
-def list_jobs(
+async def list_jobs(
     dataset_id: Optional[str] = Query(None, description="Filter jobs by dataset ID"),
     sort_order: Optional[str] = Query(
         "desc", description="Sort order: 'asc' for ascending, 'desc' for descending"
     ),
 ):
-    jobs = job_storage.list_jobs()
+    jobs = await job_storage.list_jobs()
 
     if dataset_id:
         jobs = [job for job in jobs if job.dataset_id == dataset_id]
@@ -127,11 +130,11 @@ class CreateJobTimingRequest(BaseModel):
 
 
 @router.post("/{job_id}/timing")
-def create_job_timing(request_body: CreateJobTimingRequest, job_id: str):
-    job = job_storage.get_job(job_id)
+async def create_job_timing(request_body: CreateJobTimingRequest, job_id: str):
+    job = await job_storage.get_job(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    job_storage.update_job(job.id, tools_timing=request_body.tools_timing)
+    await job_storage.update_job(job.id, tools_timing=request_body.tools_timing)
 
     return {"success": True}

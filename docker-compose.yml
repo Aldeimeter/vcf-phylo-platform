@@ -16,8 +16,11 @@ services:
       - DATASETS_PATH=${PWD}/server/data/datasets
       - RESULTS_PATH=${PWD}/server/data/results
       - STATIC_PATH=/app/data/results
+      - MONGODB_URL=mongodb://mongodb:27017/phylogenetic_jobs
     depends_on:
       - registry
+      - mongodb
+
   frontend:
     build:
       context: ./web
@@ -30,6 +33,7 @@ services:
       - fastapi
     environment:
       - BACKEND_URL=http://fastapi:8000
+
   registry:
     image: registry:2.8.3
     networks:
@@ -41,6 +45,19 @@ services:
     environment:
       - REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY=/var/lib/registry
 
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    networks:
+      - registry-net
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=phylogenetic_jobs
+
+volumes:
+  mongodb_data:
 networks:
   registry-net:
     driver: bridge

@@ -71,7 +71,9 @@ def fetch_results_json(url: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_all_jobs(dataset_id: Optional[str] = None, sort_order: str = "desc") -> List[Dict[str, Any]]:
+def get_all_jobs(
+    dataset_id: Optional[str] = None, sort_order: str = "desc"
+) -> List[Dict[str, Any]]:
     """Get all jobs with optional filtering and sorting"""
     try:
         params = {}
@@ -79,7 +81,7 @@ def get_all_jobs(dataset_id: Optional[str] = None, sort_order: str = "desc") -> 
             params["dataset_id"] = dataset_id
         if sort_order:
             params["sort_order"] = sort_order
-            
+
         response = requests.get(f"{BACKEND_URL}/jobs/", params=params)
         if response.status_code == 200:
             return response.json().get("jobs", [])
@@ -257,7 +259,7 @@ def app_ui(request: Request):
                 function redirectToJob(jobId) {
                     window.location.href = '?page=job&job_id=' + jobId;
                 }
-            """)
+            """),
         ),
         # Navigation
         ui.div(
@@ -421,22 +423,22 @@ def server(input, output, session):
                 "Filter by Dataset:",
                 choices={"": "All Datasets", **{d: d for d in datasets}},
                 selected=current_dataset_filter,
-                width="100%"
+                width="100%",
             ),
             ui.input_selectize(
                 "jobs_sort_order_input",
                 "Sort Order:",
                 choices={"desc": "Newest First", "asc": "Oldest First"},
                 selected=current_sort_order,
-                width="100%"
+                width="100%",
             ),
             ui.input_action_button(
                 "apply_jobs_filter",
                 "Apply Filters",
-                class_="btn btn-primary w-100 mt-3"
+                class_="btn btn-primary w-100 mt-3",
             ),
             class_="col-md-3",
-            style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; height: fit-content;"
+            style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; height: fit-content;",
         )
 
         # Main content area
@@ -448,12 +450,12 @@ def server(input, output, session):
                     ui.a("Start a new analysis", href="?page=analysis"),
                     ".",
                 ),
-                class_="col-md-9"
+                class_="col-md-9",
             )
         else:
             job_items = []
             for job in jobs:
-                job_id = job.get("id", "Unknown")
+                job_id = job.get("_id", "Unknown")
                 dataset_id = job.get("dataset_id", "Unknown")
                 status = job.get("status", "Unknown")
                 created_at = job.get("created_at", "Unknown")
@@ -477,19 +479,9 @@ def server(input, output, session):
                     )
                 )
 
-            main_content = ui.div(
-                ui.h2("All Jobs"),
-                *job_items,
-                class_="col-md-9"
-            )
+            main_content = ui.div(ui.h2("All Jobs"), *job_items, class_="col-md-9")
 
-        return ui.div(
-            ui.div(
-                sidebar,
-                main_content,
-                class_="row"
-            )
-        )
+        return ui.div(ui.div(sidebar, main_content, class_="row"))
 
     def render_job_detail_page(job_id: str):
         job_data = current_job_data.get()
@@ -669,10 +661,11 @@ def server(input, output, session):
         if job_id:
             # Redirect to job details page using JavaScript
             from shiny import ui
+
             ui.insert_ui(
                 selector="body",
                 ui=ui.tags.script(f"redirectToJob('{job_id}');"),
-                where="beforeEnd"
+                where="beforeEnd",
             )
         else:
             error_message.set("Failed to start analysis. Please try again.")
@@ -684,14 +677,14 @@ def server(input, output, session):
         try:
             dataset_filter = input.jobs_filter_dataset_input()
             sort_order = input.jobs_sort_order_input()
-            
+
             # Persist filter state
             jobs_filter_dataset.set(dataset_filter)
             jobs_sort_order.set(sort_order)
-            
+
             filtered_jobs = get_all_jobs(
                 dataset_id=dataset_filter if dataset_filter else None,
-                sort_order=sort_order
+                sort_order=sort_order,
             )
             jobs_list.set(filtered_jobs)
         except:

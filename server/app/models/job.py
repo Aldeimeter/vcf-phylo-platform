@@ -1,3 +1,4 @@
+from beanie import Document
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
@@ -35,8 +36,8 @@ class PipelineStatus(BaseModel):
     comparison: ToolStatuses = ToolStatuses.PENDING
 
 
-class Job(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
+class Job(Document):
+    # id: str = Field(default_factory=lambda: str(uuid4()))
     dataset_id: str
     status: JobStatus = JobStatus.PENDING
     pipeline_status: PipelineStatus = Field(default_factory=PipelineStatus)
@@ -45,3 +46,13 @@ class Job(BaseModel):
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
     tools_timing: Optional[ToolsTiming] = None
+
+    def model_dump(self, **kwargs):
+        data = super().model_dump(**kwargs)
+        if "id" in data:
+            data["id"] = str(data["id"])
+        return data
+
+    class Settings:
+        name = "jobs"
+        indexes = ["dataset_id", "status", "created_at"]
