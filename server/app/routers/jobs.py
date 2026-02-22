@@ -33,6 +33,7 @@ async def create_job(request_body: CreateRequestBody):
         volumes={
             dataset_path: {"bind": "/dataset", "mode": "ro"},
             results_path: {"bind": "/results", "mode": "rw"},
+            os.environ["CACHE_PATH"]: {"bind": "/cache", "mode": "rw"},
         },
         network="project_registry-net",
         remove=True,
