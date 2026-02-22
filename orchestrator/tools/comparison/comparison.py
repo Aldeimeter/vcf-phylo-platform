@@ -1,13 +1,20 @@
 class Comparison:
-    def __init__(self, docker_client):
+    def __init__(self, docker_client, logger):
         self.docker_client = docker_client
+        self.logger = logger
         self.image_name = "registry:5000/comparison"
 
     def run(self):
         try:
-            print(f"Pulling {self.image_name} image")
+            self.logger.info(
+                f"Pulling {self.image_name} image",
+                extra={"tool": "comparison", "pipeline_stage": "image_pull"},
+            )
             self.docker_client.images.pull(self.image_name)
-            print("Image pulled")
+            self.logger.info(
+                "Image pulled",
+                extra={"tool": "comparison", "pipeline_stage": "image_pull"},
+            )
 
             volumes = {"/results/comparison": {"bind": "/results", "mode": "rw"}}
             for tool in ["iqtree", "fastreer", "mrbayes"]:
@@ -22,5 +29,7 @@ class Comparison:
             )
             return True
         except Exception as e:
-            print(f"Comparison failed: {e}")
+            self.logger.error(
+                f"Comparison failed: {str(e)}", extra={"tool": "comparison", "error": str(e)}
+            )
             return False

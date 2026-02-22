@@ -16,9 +16,11 @@ services:
       - CACHE_PATH=${PWD}/server/data/cache
       - STATIC_PATH=/app/data/results
       - MONGODB_URL=mongodb://mongodb:27017/phylogenetic_jobs
+      - LOKI_URL=http://loki:3100
     depends_on:
       - registry
       - mongodb
+      - loki
 
   frontend:
     build:
@@ -55,8 +57,19 @@ services:
     environment:
       - MONGO_INITDB_DATABASE=phylogenetic_jobs
 
+  loki:
+    image: grafana/loki:2.9.0
+    ports:
+      - "3100:3100"
+    networks:
+      - registry-net
+    volumes:
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+
 volumes:
   mongodb_data:
+  loki_data:
 networks:
   registry-net:
     driver: bridge

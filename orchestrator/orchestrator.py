@@ -8,6 +8,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import requests
+from logger import setup_logging
 
 
 class JobStatus(str, Enum):
@@ -52,13 +53,24 @@ class Orchestrator:
         self.pipeline_status = PipelineStatus()
         self.status_lock = threading.Lock()
         self.tools_timing = ToolsTiming()
-
+        self.logger = setup_logging(job_id)
+        self.logger.info(
+            "Orchestrator initialized",
+            extra={"tool": "orchestrator", "pipeline_stage": "init"},
+        )
         self.run()
 
     def update_tool_status(self, tool_name: str, status: ToolStatuses):
         with self.status_lock:
             setattr(self.pipeline_status, tool_name, status)
-            print(f"[{datetime.now()}] {tool_name}: {status.value}")
+            self.logger.info(
+                f"{tool_name} status updated",
+                extra={
+                    "tool": tool_name,
+                    "status": status.value,
+                    "pipeline_stage": "status_update",
+                },
+            )
             self.update_job_status()
 
     def update_job_status(self, status: JobStatus = None, error: str = None):
@@ -82,7 +94,10 @@ class Orchestrator:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            print(f"Failed to update job status: {e}")
+            self.logger.error(
+                f"Failed to update job status: {str(e)}",
+                extra={"tool": "orchestrator", "error": str(e)},
+            )
 
     def return_tools_timing(self):
         fastapi_url = os.environ.get("FASTAPI_URL", "http://fastapi:8000")
@@ -94,7 +109,10 @@ class Orchestrator:
             )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            print(f"Failed to update job timing: {e}")
+            self.logger.error(
+                f"Failed to update job timing: {str(e)}",
+                extra={"tool": "orchestrator", "error": str(e)},
+            )
 
     def run(self):
         try:
@@ -110,7 +128,10 @@ class Orchestrator:
 
             self.update_job_status(JobStatus.COMPLETED)
         except Exception as e:
-            print(f"Pipeline failed with exception: {e}")
+            self.logger.error(
+                f"Pipeline failed with exception: {str(e)}",
+                extra={"tool": "orchestrator", "error": str(e)},
+            )
             self.update_job_status(JobStatus.FAILED)
         finally:
             self._cleanup_merger_results()
@@ -126,30 +147,55 @@ class Orchestrator:
         }
 
         if tool_name not in tool_mapping:
-            print(f"Unknown tool: {tool_name}")
+            self.logger.error(
+                f"Unknown tool: {tool_name}",
+                extra={"tool": "orchestrator", "pipeline_stage": "tool_error"},
+            )
             return False
 
         self.update_tool_status(tool_name, ToolStatuses.RUNNING)
 
         start_time = time.time()
         try:
-            print(f"[Thread-{threading.current_thread().name}] Starting {tool_name}")
+            self.logger.info(
+                f"Starting {tool_name}",
+                extra={
+                    "tool": tool_name,
+                    "pipeline_stage": "tool_start",
+                    "thread_name": threading.current_thread().name,
+                },
+            )
             module_name, class_name = tool_mapping[tool_name]
             module = __import__(module_name, fromlist=[class_name])
             tool_class = getattr(module, class_name)
 
-            tool = tool_class(self.docker_client)
+            tool = tool_class(self.docker_client, self.logger)
             success = tool.run()
 
             if success:
                 self.update_tool_status(tool_name, ToolStatuses.COMPLETED)
+                self.logger.info(
+                    f"{tool_name} completed successfully",
+                    extra={"tool": tool_name, "pipeline_stage": "tool_complete"},
+                )
             else:
                 self.update_tool_status(tool_name, ToolStatuses.FAILED)
+                self.logger.error(
+                    f"{tool_name} failed",
+                    extra={"tool": tool_name, "pipeline_stage": "tool_failed"},
+                )
 
             return success
 
         except Exception as e:
-            print(f"{tool_name} failed: {e}")
+            self.logger.error(
+                f"{tool_name} failed with exception: {str(e)}",
+                extra={
+                    "tool": tool_name,
+                    "pipeline_stage": "tool_error",
+                    "error": str(e),
+                },
+            )
             self.update_tool_status(tool_name, ToolStatuses.FAILED)
             return False
         finally:
@@ -173,7 +219,10 @@ class Orchestrator:
                 try:
                     future.result()
                 except Exception as e:
-                    print(f"{tool_name} failed with exception: {e}")
+                    self.logger.error(
+                        f"{tool_name} failed with exception: {e}",
+                        extra={"tool": tool_name, "error": str(e)},
+                    )
 
         return self.any_inference_succeeded()
 
@@ -192,6 +241,12 @@ class Orchestrator:
         merger_results_path = Path("/results/merger")
 
         if merger_results_path.exists():
-            print("Cleaning up merger results (cached separately)")
+            self.logger.info(
+                "Cleaning up merger results (cached separately)",
+                extra={"tool": "orchestrator", "pipeline_stage": "cleanup"},
+            )
             shutil.rmtree(merger_results_path)
-            print("Merger results cleaned up")
+            self.logger.info(
+                "Merger results cleaned up",
+                extra={"tool": "orchestrator", "pipeline_stage": "cleanup"},
+            )

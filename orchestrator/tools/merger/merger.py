@@ -4,8 +4,9 @@ import shutil
 
 
 class Merger:
-    def __init__(self, docker_client, cache_dir="/cache/merger"):
+    def __init__(self, docker_client, logger, cache_dir="/cache/merger"):
         self.docker_client = docker_client
+        self.logger = logger
         self.dataset_dir = "/dataset"
         self.image_name = "registry:5000/vcf-merger"
         self.cache_dir = Path(cache_dir)
@@ -53,19 +54,33 @@ class Merger:
 
     def run(self):
         try:
-            print("Looking for dataset cache")
+            self.logger.info(
+                "Looking for dataset cache",
+                extra={"tool": "merger", "pipeline_stage": "cache_check"},
+            )
             cache_key = self._calculate_dataset_cache()
             cache_path = self._get_cache_path(cache_key)
 
             if self._cache_exists(cache_path):
-                print(f"Cache HIT! Using cached result: {cache_key[:12]}")
+                self.logger.info(
+                    f"Cache HIT! Using cached result: {cache_key[:12]}",
+                    extra={"tool": "merger", "cache_key": cache_key[:12]},
+                )
                 self._restore_from_cache(cache_path, "/results/merger")
                 return True
 
-            print(f"Cache MISS! Using merger to create cache: {cache_key[:12]}")
-            print("Pulling merger image")
+            self.logger.info(
+                f"Cache MISS! Using merger to create cache: {cache_key[:12]}",
+                extra={"tool": "merger", "cache_key": cache_key[:12]},
+            )
+            self.logger.info(
+                "Pulling merger image",
+                extra={"tool": "merger", "pipeline_stage": "image_pull"},
+            )
             self.docker_client.images.pull(self.image_name)
-            print("Image pulled")
+            self.logger.info(
+                "Image pulled", extra={"tool": "merger", "pipeline_stage": "image_pull"}
+            )
 
             result = self.docker_client.containers.run(
                 image=self.image_name,
@@ -79,9 +94,12 @@ class Merger:
             )
 
             self._save_to_cache("/results/merger", cache_path)
-            print(f"Results cached for future use: {cache_key[:12]}")
+            self.logger.info(
+                f"Results cached for future use: {cache_key[:12]}",
+                extra={"tool": "merger", "cache_key": cache_key[:12]},
+            )
 
             return True
         except Exception as e:
-            print(f"Merge failed: {e}")
+            self.logger.error(f"Merge failed: {str(e)}", extra={"tool": "merger", "error": str(e)})
             return False

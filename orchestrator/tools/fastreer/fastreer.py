@@ -1,13 +1,20 @@
 class FastreeR:
-    def __init__(self, docker_client):
+    def __init__(self, docker_client, logger):
         self.docker_client = docker_client
+        self.logger = logger
         self.image_name = "registry:5000/fastreer"
 
     def run(self):
         try:
-            print(f"Pulling {self.image_name} image")
+            self.logger.info(
+                f"Pulling {self.image_name} image",
+                extra={"tool": "fastreer", "pipeline_stage": "image_pull"},
+            )
             self.docker_client.images.pull(self.image_name)
-            print("Image pulled")
+            self.logger.info(
+                "Image pulled",
+                extra={"tool": "fastreer", "pipeline_stage": "image_pull"},
+            )
             result = self.docker_client.containers.run(
                 image=self.image_name,
                 command=["sh", "/app/run-fastreer.sh"],
@@ -20,5 +27,7 @@ class FastreeR:
             )
             return True
         except Exception as e:
-            print(f"FastreeR failed: {e}")
+            self.logger.error(
+                f"FastreeR failed: {str(e)}", extra={"tool": "fastreer", "error": str(e)}
+            )
             return False
