@@ -1,6 +1,7 @@
 from dataclasses import dataclass, asdict
 import time
 from datetime import datetime
+from pathlib import Path
 from enum import Enum
 import docker
 import threading
@@ -112,6 +113,7 @@ class Orchestrator:
             print(f"Pipeline failed with exception: {e}")
             self.update_job_status(JobStatus.FAILED)
         finally:
+            self._cleanup_merger_results()
             self.return_tools_timing()
 
     def _run_tool(self, tool_name: str):
@@ -183,3 +185,13 @@ class Orchestrator:
                 self.pipeline_status.mrbayes == ToolStatuses.COMPLETED,
             ]
         )
+
+    def _cleanup_merger_results(self):
+        import shutil
+
+        merger_results_path = Path("/results/merger")
+
+        if merger_results_path.exists():
+            print("Cleaning up merger results (cached separately)")
+            shutil.rmtree(merger_results_path)
+            print("Merger results cleaned up")
