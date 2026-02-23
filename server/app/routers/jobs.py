@@ -35,6 +35,12 @@ async def create_job(request_body: CreateRequestBody):
             results_path: {"bind": "/results", "mode": "rw"},
             os.environ["CACHE_PATH"]: {"bind": "/cache", "mode": "rw"},
         },
+        environment={
+            "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO"),
+            "CONSOLE_LOG_LEVEL": os.environ.get("CONSOLE_LOG_LEVEL", "INFO"),
+            "LOKI_LOG_LEVEL": os.environ.get("LOKI_LOG_LEVEL", "INFO"),
+            "FASTAPI_URL": os.environ.get("FASTAPI_URL", "http://fastapi:8000"),
+        },
         network="project_registry-net",
         remove=True,
         privileged=True,

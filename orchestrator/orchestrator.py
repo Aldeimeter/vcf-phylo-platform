@@ -63,7 +63,7 @@ class Orchestrator:
     def update_tool_status(self, tool_name: str, status: ToolStatuses):
         with self.status_lock:
             setattr(self.pipeline_status, tool_name, status)
-            self.logger.info(
+            self.logger.debug(
                 f"{tool_name} status updated",
                 extra={
                     "tool": tool_name,
@@ -79,6 +79,15 @@ class Orchestrator:
 
         if status:
             payload["status"] = status
+            self.logger.debug(
+                f"Job status changing to {status.value}",
+                extra={
+                    "tool": "orchestrator",
+                    "job_status": status.value,
+                    "pipeline_stage": "status_update",
+                    "job_id": self.job_id,
+                },
+            )
         payload["pipeline_status"] = {
             field.name: getattr(self.pipeline_status, field.name).value
             for field in self.pipeline_status.__dataclass_fields__.values()
@@ -86,6 +95,20 @@ class Orchestrator:
 
         if error:
             payload["error"] = error
+            self.logger.error(
+                f"Job failed with error: {error}",
+                extra={
+                    "tool": "orchestrator",
+                    "error": error,
+                    "job_id": self.job_id,
+                    "pipeline_stage": "error",
+                },
+            )
+
+        self.logger.debug(
+            f"Sending status update to {fastapi_url}", extra={"payload": payload}
+        )
+
         try:
             response = requests.post(
                 f"{fastapi_url}/jobs/{self.job_id}/status",
@@ -93,10 +116,17 @@ class Orchestrator:
                 timeout=10,
             )
             response.raise_for_status()
+            self.logger.debug(
+                f"Status update successful, response: {response.status_code}"
+            )
         except requests.exceptions.RequestException as e:
             self.logger.error(
                 f"Failed to update job status: {str(e)}",
-                extra={"tool": "orchestrator", "error": str(e)},
+                extra={
+                    "tool": "orchestrator",
+                    "error": str(e),
+                    "fastapi_url": fastapi_url,
+                },
             )
 
     def return_tools_timing(self):
@@ -107,11 +137,18 @@ class Orchestrator:
             response = requests.post(
                 f"{fastapi_url}/jobs/{self.job_id}/timing", json=payload, timeout=10
             )
+            self.logger.debug(
+                f"Timing returned successful, response: {response.status_code}"
+            )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             self.logger.error(
-                f"Failed to update job timing: {str(e)}",
-                extra={"tool": "orchestrator", "error": str(e)},
+                f"Failed to update job status: {str(e)}",
+                extra={
+                    "tool": "orchestrator",
+                    "error": str(e),
+                    "fastapi_url": fastapi_url,
+                },
             )
 
     def run(self):
@@ -163,9 +200,16 @@ class Orchestrator:
                     "tool": tool_name,
                     "pipeline_stage": "tool_start",
                     "thread_name": threading.current_thread().name,
+                    "job_id": self.job_id,
+                    "start_time": datetime.fromtimestamp(start_time).isoformat(),
                 },
             )
             module_name, class_name = tool_mapping[tool_name]
+
+            self.logger.debug(
+                f"Importing module for {tool_name}: {module_name}.{class_name}"
+            )
+
             module = __import__(module_name, fromlist=[class_name])
             tool_class = getattr(module, class_name)
 
@@ -175,14 +219,22 @@ class Orchestrator:
             if success:
                 self.update_tool_status(tool_name, ToolStatuses.COMPLETED)
                 self.logger.info(
-                    f"{tool_name} completed successfully",
-                    extra={"tool": tool_name, "pipeline_stage": "tool_complete"},
+                    f"{tool_name} finished successfully",
+                    extra={
+                        "tool": tool_name,
+                        "pipeline_stage": "tool_complete",
+                        "job_id": self.job_id,
+                    },
                 )
             else:
                 self.update_tool_status(tool_name, ToolStatuses.FAILED)
                 self.logger.error(
                     f"{tool_name} failed",
-                    extra={"tool": tool_name, "pipeline_stage": "tool_failed"},
+                    extra={
+                        "tool": tool_name,
+                        "pipeline_stage": "tool_failed",
+                        "job_id": self.job_id,
+                    },
                 )
 
             return success
@@ -205,7 +257,15 @@ class Orchestrator:
 
     def run_parallel_inference(self) -> bool:
         inference_tools = ["iqtree", "fastreer", "mrbayes"]
-
+        self.logger.info(
+            f"Starting parallel inference with {len(inference_tools)} tools",
+            extra={
+                "tool": "orchestrator",
+                "pipeline_stage": "parallel_start",
+                "tools": inference_tools,
+                "job_id": self.job_id,
+            },
+        )
         with ThreadPoolExecutor(
             max_workers=3, thread_name_prefix="inference"
         ) as executor:
@@ -214,16 +274,40 @@ class Orchestrator:
                 for tool_name in inference_tools
             }
 
+            completed_tools = []
+            failed_tools = []
+
             for future in as_completed(future_to_tool):
                 tool_name = future_to_tool[future]
                 try:
-                    future.result()
+                    success = future.result()
+                    if success:
+                        completed_tools.append(tool_name)
+                    else:
+                        failed_tools.append(tool_name)
+                    self.logger.debug(
+                        f"Tool {tool_name} finished with success={success}"
+                    )
                 except Exception as e:
+                    failed_tools.append(tool_name)
                     self.logger.error(
                         f"{tool_name} failed with exception: {e}",
-                        extra={"tool": tool_name, "error": str(e)},
+                        extra={
+                            "tool": tool_name,
+                            "error": str(e),
+                            "job_id": self.job_id,
+                        },
                     )
-
+        self.logger.info(
+            f"Parallel inference completed. Success: {completed_tools}, Failed: {failed_tools}",
+            extra={
+                "tool": "orchestrator",
+                "pipeline_stage": "parallel_complete",
+                "completed_tools": completed_tools,
+                "failed_tools": failed_tools,
+                "job_id": self.job_id,
+            },
+        )
         return self.any_inference_succeeded()
 
     def any_inference_succeeded(self) -> bool:

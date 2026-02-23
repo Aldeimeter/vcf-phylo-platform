@@ -1,10 +1,12 @@
+import os
 import logging
 import logging_loki
 
 
 def setup_logging(job_id: str):
     logger = logging.getLogger("orchestrator")
-    logger.setLevel(logging.INFO)
+    log_level = os.environ.get("LOG_LEVEL", "INFO").upper()
+    logger.setLevel(getattr(logging, log_level, logging.INFO))
 
     logger.handlers = []
 
@@ -14,10 +16,17 @@ def setup_logging(job_id: str):
         version="1",
     )
 
-    console_handler = logging.StreamHandler()
-    console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    loki_level = os.environ.get("LOKI_LOG_LEVEL", "INFO").upper()
+    loki_handler.setLevel(getattr(logging, loki_level, logging.INFO))
 
+    console_handler = logging.StreamHandler()
+    console_formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] [%(name)s] %(message)s - %(funcName)s:%(lineno)d"
+    )
     console_handler.setFormatter(console_formatter)
+
+    console_level = os.environ.get("CONSOLE_LOG_LEVEL", log_level).upper()
+    console_handler.setLevel(getattr(logging, console_level, logging.INFO))
 
     logger.addHandler(loki_handler)
     logger.addHandler(console_handler)

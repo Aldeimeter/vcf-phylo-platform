@@ -17,6 +17,9 @@ services:
       - STATIC_PATH=/app/data/results
       - MONGODB_URL=mongodb://mongodb:27017/phylogenetic_jobs
       - LOKI_URL=http://loki:3100
+      - LOKI_LOG_LEVEL=debug
+      - CONSOLE_LOG_LEVEL=debug
+      - LOG_LEVEL=debug
     depends_on:
       - registry
       - mongodb
