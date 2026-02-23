@@ -2,6 +2,7 @@ from pathlib import Path
 import hashlib
 import shutil
 import time
+from config import Config
 
 
 class Merger:
@@ -9,7 +10,7 @@ class Merger:
         self.docker_client = docker_client
         self.logger = logger
         self.dataset_dir = "/dataset"
-        self.image_name = "registry:5000/vcf-merger"
+        self.image_name = f"{Config.get_registry_url()}/vcf-merger"
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -99,7 +100,7 @@ class Merger:
                     "tool": "merger", 
                     "pipeline_stage": "image_pull",
                     "image_name": self.image_name,
-                    "registry": "registry:5000"
+                    "registry": Config.get_registry_url()
                 },
             )
             pull_start = time.time()

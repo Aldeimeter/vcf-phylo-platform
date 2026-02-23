@@ -1,11 +1,12 @@
 import time
+from config import Config
 
 
 class MrBayes:
     def __init__(self, docker_client, logger):
         self.docker_client = docker_client
         self.logger = logger
-        self.image_name = "registry:5000/mrbayes"
+        self.image_name = f"{Config.get_registry_url()}/mrbayes"
 
     def run(self):
         try:
@@ -15,7 +16,7 @@ class MrBayes:
                     "tool": "mrbayes", 
                     "pipeline_stage": "image_pull",
                     "image_name": self.image_name,
-                    "registry": "registry:5000"
+                    "registry": Config.get_registry_url()
                 },
             )
             pull_start = time.time()

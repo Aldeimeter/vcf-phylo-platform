@@ -1,6 +1,7 @@
 #!/bin/sh
 # Start Docker daemon in background
-dockerd --host unix:///var/run/docker.sock --insecure-registry registry:5000 &
+REGISTRY_PORT=${REGISTRY_PORT:-5000}
+dockerd --host unix:///var/run/docker.sock --insecure-registry registry:${REGISTRY_PORT} &
 sleep 5  # Wait for daemon to start
 
 # Execute whatever command was passed (from FastAPI)
