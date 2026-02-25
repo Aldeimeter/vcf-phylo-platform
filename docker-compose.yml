@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     networks:
-      - registry-net
+      - phylo-net
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock # Docker socket access
       - ./server/data:/app/data
@@ -32,7 +32,7 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - registry-net
+      - phylo-net
     depends_on:
       - fastapi
     environment:
@@ -41,7 +41,7 @@ services:
   registry:
     image: registry:2.8.3
     networks:
-      - registry-net
+      - phylo-net
     ports:
       - "${REGISTRY_PORT:-5000}:5000"
     volumes:
@@ -54,7 +54,7 @@ services:
     ports:
       - "27017:27017"
     networks:
-      - registry-net
+      - phylo-net
     volumes:
       - mongodb_data:/data/db
     environment:
@@ -65,7 +65,7 @@ services:
     ports:
       - "3100:3100"
     networks:
-      - registry-net
+      - phylo-net
     volumes:
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
@@ -74,5 +74,6 @@ volumes:
   mongodb_data:
   loki_data:
 networks:
-  registry-net:
+  phylo-net:
     driver: bridge
+    name: phylo-net

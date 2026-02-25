@@ -42,7 +42,7 @@ async def create_job(request_body: CreateRequestBody):
             "FASTAPI_URL": os.environ.get("FASTAPI_URL", "http://fastapi:8000"),
             "REGISTRY_PORT": os.environ.get("REGISTRY_PORT", "5000"),
         },
-        network="project_registry-net",
+        network="phylo-net",
         remove=True,
         privileged=True,
         detach=True,
