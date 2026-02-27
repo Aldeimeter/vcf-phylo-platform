@@ -10,8 +10,9 @@ def setup_logging(job_id: str):
 
     logger.handlers = []
 
+    loki_url = os.environ.get("LOKI_URL", "http://loki:3100")
     loki_handler = logging_loki.LokiHandler(
-        url="http://loki:3100/loki/api/v1/push",
+        url=f"{loki_url}/loki/api/v1/push",
         tags={"job_id": job_id, "service": "orchestrator"},
         version="1",
     )
