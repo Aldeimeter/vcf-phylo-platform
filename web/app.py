@@ -1,5 +1,6 @@
 import requests
 import os
+from pathlib import Path
 from shiny import App, render, ui, reactive
 from starlette.requests import Request
 from typing import Dict, Any, Optional, List
@@ -291,6 +292,31 @@ def app_ui(request: Request):
                 #log-container::-webkit-scrollbar {
                     display: none;
                 }
+
+                .tree-container {
+                    width: 100%;
+                    min-height: 500px;
+                    background: white;
+                    overflow: hidden;
+                    cursor: grab;
+                }
+                .tree-container:active {
+                    cursor: grabbing;
+                }
+                .tree-section {
+                    border: 1px solid #e9ecef;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    margin: 10px 0;
+                }
+                .tree-section-header {
+                    background: #f8f9fa;
+                    padding: 10px 15px;
+                    border-bottom: 1px solid #e9ecef;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
             """),
             ui.tags.script("""
                 function redirectToJob(jobId) {
@@ -343,11 +369,13 @@ def app_ui(request: Request):
                         }
                     });
                     pageObserver.observe(document.body, { childList: true, subtree: true });
-                    
+
                     // Try setup immediately in case container already exists
                     setTimeout(setupLogScrollBehavior, 100);
                 });
             """),
+            ui.tags.script(src="https://d3js.org/d3.v7.min.js"),
+            ui.tags.script(src=f"/assets/tree_renderer.js?v={int(os.path.getmtime(Path(__file__).parent / 'www' / 'tree_renderer.js'))}"),
         ),
         # Navigation
         ui.div(
@@ -431,11 +459,18 @@ def server(input, output, session):
                             pipeline_status[tool] = "pending"
                     status_data["pipeline_status"] = pipeline_status
 
-                current_job_data.set(status_data)
+                # Only update job data if status or pipeline changed
+                old_data = current_job_data.get() or {}
+                if (
+                    status_data.get("status") != old_data.get("status")
+                    or status_data.get("pipeline_status") != old_data.get("pipeline_status")
+                ):
+                    current_job_data.set(status_data)
 
-                # Load results if job is completed
-                if status_data.get("status") == "COMPLETED" or is_pipeline_completed(
-                    pipeline_status
+                # Load results once when job is completed; never re-fetch after that
+                if current_results_data.get() is None and (
+                    status_data.get("status") == "COMPLETED"
+                    or is_pipeline_completed(pipeline_status)
                 ):
                     results = get_job_results(job_id)
                     if results:
@@ -486,9 +521,11 @@ def server(input, output, session):
         page = input.current_page()
         job_id = input.current_job_id()
 
-        # Clear logs when navigating away from job pages
+        # Clear state when navigating away from job pages
         if page != "job":
             current_logs.set("")
+            current_job_data.set(None)
+            current_results_data.set(None)
 
         if page == "analysis" or page == "":
             return render_analysis_page()
@@ -733,26 +770,55 @@ def server(input, output, session):
             # NWK Files
             nwk_files = results_data.get("nwk_files", [])
             if nwk_files:
-                content.append(ui.h4("Phylogenetic Trees (.nwk files)"))
+                content.append(ui.h4("Phylogenetic Trees"))
                 for file_info in nwk_files:
                     tool_name = file_info.get("tool", "Unknown").upper()
                     filename = file_info.get("filename", "Unknown")
                     file_url = file_info.get("url", "")
 
+                    nwk_content = ""
+                    try:
+                        nwk_resp = requests.get(f"{BACKEND_URL}{file_url}", timeout=5)
+                        if nwk_resp.status_code == 200:
+                            nwk_content = nwk_resp.text
+                    except Exception:
+                        pass
+
+                    tree_viz = (
+                        ui.div(**{"data-newick": nwk_content}, class_="tree-container", style="display:none;")
+                        if nwk_content
+                        else ui.div(
+                            ui.p("Tree visualization unavailable.", class_="text-muted", style="padding:15px;"),
+                            class_="tree-container",
+                            style="display:none;",
+                        )
+                    )
+
                     content.append(
                         ui.div(
                             ui.div(
-                                ui.div(tool_name, class_="file-tool"),
-                                ui.div(filename, class_="file-name"),
-                                class_="file-info",
+                                ui.div(
+                                    ui.div(tool_name, class_="file-tool"),
+                                    ui.div(filename, class_="file-name"),
+                                    class_="file-info",
+                                ),
+                                ui.div(
+                                    ui.tags.button(
+                                        "Show Tree",
+                                        class_="btn btn-sm btn-outline-secondary tree-toggle-btn me-2",
+                                    ),
+                                    ui.a(
+                                        "Download",
+                                        href=f"{BACKEND_URL}{file_url}",
+                                        target="_blank",
+                                        class_="btn btn-sm btn-primary",
+                                    ),
+                                    style="display:flex; gap:6px;",
+                                ),
+                                class_="file-item tree-section-header",
                             ),
-                            ui.a(
-                                "Download",
-                                href=f"{BACKEND_URL}{file_url}",
-                                target="_blank",
-                                class_="btn btn-sm btn-primary",
-                            ),
-                            class_="file-item",
+                            tree_viz,
+                            class_="tree-section",
                         )
                     )
 
@@ -884,4 +950,4 @@ def server(input, output, session):
 
 
 # Create the app with URL bookmarking enabled
-app = App(app_ui, server)
+app = App(app_ui, server, static_assets={"/assets": Path(__file__).parent / "www"})

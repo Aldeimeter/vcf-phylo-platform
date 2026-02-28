@@ -25,6 +25,7 @@ WORKDIR /app
 
 # Copy application code
 COPY app.py ./
+COPY www/ ./www/
 
 # Expose port
 EXPOSE 8080
