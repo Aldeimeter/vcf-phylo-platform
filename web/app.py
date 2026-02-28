@@ -110,34 +110,15 @@ def format_log_entry(log: Dict[str, Any]) -> str:
         if "T" in timestamp:
             # Convert ISO format to just time
             from datetime import datetime
+
             dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             time_str = dt.strftime("%H:%M:%S")
         else:
             time_str = timestamp
-        
-        tool = (log.get("tool", "orchestrator") or "orchestrator").upper()
+
         message = log.get("message", "")
-        level = log.get("level", "info")
-        
-        # Color coding with better contrast for light background
-        if level == "error":
-            prefix = "❌"
-        elif tool == "ORCHESTRATOR":
-            prefix = "🔧"
-        elif tool == "MERGER":
-            prefix = "🔗"
-        elif tool == "IQTREE":
-            prefix = "🌳"
-        elif tool == "MRBAYES":
-            prefix = "🧬"
-        elif tool == "COMPARISON":
-            prefix = "📊"
-        elif tool == "FASTREER":
-            prefix = "🏃"
-        else:
-            prefix = "ℹ️"
-        
-        return f"{time_str} {prefix} [{tool}] {message}"
+
+        return f"{time_str} {message}"
     except Exception as e:
         return f"[Error formatting log: {e}]"
 
@@ -469,7 +450,7 @@ def server(input, output, session):
     def poll_job_logs():
         job_id = input.current_job_id()
         page = input.current_page()
-        
+
         # Only poll logs when on a job page
         if page != "job" or not job_id:
             current_logs.set("")
@@ -485,9 +466,9 @@ def server(input, output, session):
                 formatted_logs = []
                 for log in logs[-50:]:  # Show last 50 logs
                     formatted_logs.append(format_log_entry(log))
-                
+
                 log_text = "\n".join(formatted_logs)
-                
+
                 # Only update if content has actually changed
                 if log_text != current_logs.get():
                     current_logs.set(log_text)
@@ -504,7 +485,7 @@ def server(input, output, session):
     def page_content():
         page = input.current_page()
         job_id = input.current_job_id()
-        
+
         # Clear logs when navigating away from job pages
         if page != "job":
             current_logs.set("")
@@ -543,9 +524,57 @@ def server(input, output, session):
                 multiple=False,
             )
 
+        pipeline_steps = [
+            (
+                "1. VCF Merger",
+                "Merges all VCF files in the dataset into a single multi-sample VCF file for downstream analysis.",
+            ),
+            (
+                "2. IQ-TREE",
+                "Constructs a maximum-likelihood phylogenetic tree using the GTR substitution model.",
+            ),
+            (
+                "3. FastReer",
+                "Builds a fast neighbor-joining phylogenetic tree as an alternative to ML inference.",
+            ),
+            (
+                "4. MrBayes",
+                "Runs Bayesian phylogenetic inference to estimate a consensus tree with posterior probability support values.",
+            ),
+            (
+                "5. Comparison",
+                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using Robinson-Foulds (RF) distance metrics.",
+            ),
+        ]
+
+        step_items = []
+        for i, (title, description) in enumerate(pipeline_steps):
+            is_last = i == len(pipeline_steps) - 1
+            step_items.append(
+                ui.div(
+                    ui.strong(title),
+                    ui.p(
+                        description, class_="mb-0 text-muted", style="font-size: 0.9em;"
+                    ),
+                    style=f"padding: 10px 0;{'' if is_last else ' border-bottom: 1px solid #e9ecef;'}",
+                )
+            )
+
+        pipeline_info = ui.div(
+            ui.h4("Pipeline Overview", class_="mb-3"),
+            ui.p(
+                "The analysis runs the following tools automatically in sequence:",
+                class_="text-muted mb-3",
+                style="font-size: 0.9em;",
+            ),
+            *step_items,
+            style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin-bottom: 24px;",
+        )
+
         return ui.div(
             ui.h2("Start New Analysis"),
             error_ui,
+            pipeline_info,
             ui.p("Choose a dataset to start phylogenetic analysis:"),
             datasets_content,
             ui.div(
@@ -691,7 +720,7 @@ def server(input, output, session):
             ui.div(
                 ui.output_text_verbatim("job_logs"),
                 id="log-container",
-                style="height: 400px; overflow-y: auto; background: #f8f9fa; color: #212529; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.4; scrollbar-width: none; -ms-overflow-style: none;"
+                style="height: 400px; overflow-y: auto; background: #f8f9fa; color: #212529; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.4; scrollbar-width: none; -ms-overflow-style: none;",
             )
         )
 
@@ -699,9 +728,7 @@ def server(input, output, session):
         if results_data:
             content.append(ui.hr())
             content.append(ui.h3("Results"))
-            content.append(
-                ui.div("✅ Results available!", class_="alert alert-success")
-            )
+            content.append(ui.div("Results available.", class_="alert alert-success"))
 
             # NWK Files
             nwk_files = results_data.get("nwk_files", [])
