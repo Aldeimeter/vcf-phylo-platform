@@ -3,10 +3,11 @@ from config import Config
 
 
 class IqTree:
-    def __init__(self, docker_client, logger):
+    def __init__(self, docker_client, logger, config=None):
         self.docker_client = docker_client
         self.logger = logger
         self.image_name = f"{Config.get_registry_url()}/iqtree3"
+        self.config = config
 
     def run(self):
         try:
@@ -62,6 +63,10 @@ class IqTree:
             
             container_start = time.time()
             try:
+                env = {}
+                if self.config and self.config.iqtree_seed is not None:
+                    env["IQTREE_SEED"] = str(self.config.iqtree_seed)
+
                 result = self.docker_client.containers.run(
                     image=self.image_name,
                     command=["sh", "/app/run-iqtree.sh"],
@@ -69,6 +74,7 @@ class IqTree:
                         "/results/merger": {"bind": "/data", "mode": "ro"},
                         "/results/iqtree": {"bind": "/results", "mode": "rw"},
                     },
+                    environment=env,
                     remove=True,
                     detach=False,
                 )

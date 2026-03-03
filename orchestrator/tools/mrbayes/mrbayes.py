@@ -3,10 +3,11 @@ from config import Config
 
 
 class MrBayes:
-    def __init__(self, docker_client, logger):
+    def __init__(self, docker_client, logger, config=None):
         self.docker_client = docker_client
         self.logger = logger
         self.image_name = f"{Config.get_registry_url()}/mrbayes"
+        self.config = config
 
     def run(self):
         try:
@@ -62,6 +63,12 @@ class MrBayes:
             
             container_start = time.time()
             try:
+                env = {}
+                if self.config and self.config.mrbayes_seed is not None:
+                    env["MRBAYES_SEED"] = str(self.config.mrbayes_seed)
+                if self.config and self.config.mrbayes_swapseed is not None:
+                    env["MRBAYES_SWAPSEED"] = str(self.config.mrbayes_swapseed)
+
                 result = self.docker_client.containers.run(
                     image=self.image_name,
                     command=["sh", "/app/run-mrbayes.sh"],
@@ -69,6 +76,7 @@ class MrBayes:
                         "/results/merger": {"bind": "/data", "mode": "ro"},
                         "/results/mrbayes": {"bind": "/results", "mode": "rw"},
                     },
+                    environment=env,
                     remove=True,
                     detach=False,
                 )

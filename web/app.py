@@ -22,12 +22,22 @@ def get_datasets():
         return []
 
 
-def start_job(dataset_id: str) -> Optional[str]:
+def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: Optional[int] = None, mrbayes_swapseed: Optional[int] = None) -> Optional[str]:
     """Start a new analysis job"""
     try:
-        response = requests.post(
-            f"{BACKEND_URL}/jobs/create", json={"dataset_id": dataset_id}
-        )
+        config = {}
+        if iqtree_seed is not None:
+            config["iqtree_seed"] = iqtree_seed
+        if mrbayes_seed is not None:
+            config["mrbayes_seed"] = mrbayes_seed
+        if mrbayes_swapseed is not None:
+            config["mrbayes_swapseed"] = mrbayes_swapseed
+
+        payload: Dict[str, Any] = {"dataset_id": dataset_id}
+        if config:
+            payload["config"] = config
+
+        response = requests.post(f"{BACKEND_URL}/jobs/create", json=payload)
         if response.status_code == 200:
             return response.json()["job_id"]
         return None
@@ -608,12 +618,33 @@ def server(input, output, session):
             style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin-bottom: 24px;",
         )
 
+        seeds_ui = ui.div(
+            ui.h5("Random Seeds (optional)", class_="mt-4 mb-2"),
+            ui.p("Leave blank to use default values.", class_="text-muted mb-3", style="font-size: 0.9em;"),
+            ui.div(
+                ui.div(
+                    ui.input_numeric("iqtree_seed", "IQ-TREE seed", value=None, min=1),
+                    class_="col-md-4",
+                ),
+                ui.div(
+                    ui.input_numeric("mrbayes_seed", "MrBayes seed", value=None, min=1),
+                    class_="col-md-4",
+                ),
+                ui.div(
+                    ui.input_numeric("mrbayes_swapseed", "MrBayes swapseed", value=None, min=1),
+                    class_="col-md-4",
+                ),
+                class_="row",
+            ),
+        )
+
         return ui.div(
             ui.h2("Start New Analysis"),
             error_ui,
             pipeline_info,
             ui.p("Choose a dataset to start phylogenetic analysis:"),
             datasets_content,
+            seeds_ui,
             ui.div(
                 ui.input_action_button(
                     "start_analysis",
@@ -910,7 +941,18 @@ def server(input, output, session):
             error_message.set("Please select a dataset first")
             return
 
-        job_id = start_job(dataset)
+        def read_seed(input_fn):
+            try:
+                val = input_fn()
+                return int(val) if val is not None else None
+            except Exception:
+                return None
+
+        iqtree_seed = read_seed(input.iqtree_seed)
+        mrbayes_seed = read_seed(input.mrbayes_seed)
+        mrbayes_swapseed = read_seed(input.mrbayes_swapseed)
+
+        job_id = start_job(dataset, iqtree_seed=iqtree_seed, mrbayes_seed=mrbayes_seed, mrbayes_swapseed=mrbayes_swapseed)
         if job_id:
             # Redirect to job details page using JavaScript
             from shiny import ui

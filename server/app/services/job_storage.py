@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
 from typing import Dict, List, Optional
-from app.models.job import Job, JobStatus
+from app.models.job import Job, JobStatus, PipelineConfig
 from beanie import PydanticObjectId
 from bson.errors import InvalidId
 
 
 class JobStorage:
-    async def create_job(self, dataset_id: str) -> Job:
-        job = Job(dataset_id=dataset_id)
+    async def create_job(self, dataset_id: str, pipeline_config: Optional[PipelineConfig] = None) -> Job:
+        job = Job(dataset_id=dataset_id, pipeline_config=pipeline_config)
         await job.insert()
         return job
 

@@ -6,7 +6,7 @@ from config import Config
 
 
 class Merger:
-    def __init__(self, docker_client, logger, cache_dir="/cache/merger"):
+    def __init__(self, docker_client, logger, config=None, cache_dir="/cache/merger"):
         self.docker_client = docker_client
         self.logger = logger
         self.dataset_dir = "/dataset"

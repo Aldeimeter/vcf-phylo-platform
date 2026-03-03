@@ -7,7 +7,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from app.services.docker import client
-from app.models.job import JobStatus, PipelineStatus, ToolsTiming
+from app.models.job import JobStatus, PipelineStatus, ToolsTiming, PipelineConfig
 from app.services.job_storage import job_storage
 from pathlib import Path
 
@@ -16,17 +16,36 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 class CreateRequestBody(BaseModel):
     dataset_id: str
+    config: Optional[PipelineConfig] = None
 
 
 @router.post("/create")
 async def create_job(request_body: CreateRequestBody):
-    job = await job_storage.create_job(request_body.dataset_id)
+    job = await job_storage.create_job(request_body.dataset_id, pipeline_config=request_body.config)
     await job_storage.update_job(
         job.id, status=JobStatus.RUNNING, started_at=datetime.now()
     )
     job_id = str(job.id)
     dataset_path = str(Path(os.environ["DATASETS_PATH"], request_body.dataset_id))
     results_path = str(Path(os.environ["RESULTS_PATH"], job_id))
+
+    orchestrator_env = {
+        "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO"),
+        "CONSOLE_LOG_LEVEL": os.environ.get("CONSOLE_LOG_LEVEL", "INFO"),
+        "LOKI_LOG_LEVEL": os.environ.get("LOKI_LOG_LEVEL", "INFO"),
+        "FASTAPI_URL": os.environ.get("FASTAPI_URL", "http://fastapi:8000"),
+        "LOKI_URL": os.environ.get("LOKI_URL", "http://loki:3100"),
+        "REGISTRY_PORT": os.environ.get("REGISTRY_PORT", "5000"),
+    }
+    if request_body.config:
+        cfg = request_body.config
+        if cfg.iqtree_seed is not None:
+            orchestrator_env["IQTREE_SEED"] = str(cfg.iqtree_seed)
+        if cfg.mrbayes_seed is not None:
+            orchestrator_env["MRBAYES_SEED"] = str(cfg.mrbayes_seed)
+        if cfg.mrbayes_swapseed is not None:
+            orchestrator_env["MRBAYES_SWAPSEED"] = str(cfg.mrbayes_swapseed)
+
     client.containers.run(
         image="orchestrator:latest",
         command=["python", "/app/main.py", job_id],
@@ -35,14 +54,7 @@ async def create_job(request_body: CreateRequestBody):
             results_path: {"bind": "/results", "mode": "rw"},
             os.environ["CACHE_PATH"]: {"bind": "/cache", "mode": "rw"},
         },
-        environment={
-            "LOG_LEVEL": os.environ.get("LOG_LEVEL", "INFO"),
-            "CONSOLE_LOG_LEVEL": os.environ.get("CONSOLE_LOG_LEVEL", "INFO"),
-            "LOKI_LOG_LEVEL": os.environ.get("LOKI_LOG_LEVEL", "INFO"),
-            "FASTAPI_URL": os.environ.get("FASTAPI_URL", "http://fastapi:8000"),
-            "LOKI_URL": os.environ.get("LOKI_URL", "http://loki:3100"),
-            "REGISTRY_PORT": os.environ.get("REGISTRY_PORT", "5000"),
-        },
+        environment=orchestrator_env,
         network="phylo-net",
         remove=True,
         privileged=True,
@@ -132,6 +144,20 @@ async def list_jobs(
     jobs.sort(key=lambda job: job.created_at, reverse=reverse_order)
 
     return {"jobs": jobs}
+
+
+class SaveJobConfigRequest(BaseModel):
+    pipeline_config: PipelineConfig
+
+
+@router.post("/{job_id}/config")
+async def save_job_config(request_body: SaveJobConfigRequest, job_id: str):
+    job = await job_storage.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    await job_storage.update_job(job.id, pipeline_config=request_body.pipeline_config)
+    return {"success": True}
 
 
 class CreateJobTimingRequest(BaseModel):

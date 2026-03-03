@@ -36,6 +36,12 @@ class PipelineStatus(BaseModel):
     comparison: ToolStatuses = ToolStatuses.PENDING
 
 
+class PipelineConfig(BaseModel):
+    iqtree_seed: int = 12345
+    mrbayes_seed: int = 12345
+    mrbayes_swapseed: int = 54321
+
+
 class Job(Document):
     # id: str = Field(default_factory=lambda: str(uuid4()))
     dataset_id: str
@@ -46,6 +52,7 @@ class Job(Document):
     completed_at: Optional[datetime] = None
     error: Optional[str] = None
     tools_timing: Optional[ToolsTiming] = None
+    pipeline_config: Optional[PipelineConfig] = None
 
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)

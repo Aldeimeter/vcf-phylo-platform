@@ -3,7 +3,7 @@ from config import Config
 
 
 class Comparison:
-    def __init__(self, docker_client, logger):
+    def __init__(self, docker_client, logger, config=None):
         self.docker_client = docker_client
         self.logger = logger
         self.image_name = f"{Config.get_registry_url()}/comparison"

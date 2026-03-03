@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import requests
 from logger import setup_logging
+from config import JobConfig
 
 
 class JobStatus(str, Enum):
@@ -54,6 +55,8 @@ class Orchestrator:
         self.status_lock = threading.Lock()
         self.tools_timing = ToolsTiming()
         self.logger = setup_logging(job_id)
+
+        self.job_config = JobConfig.from_env()
         self.logger.info(
             "Orchestrator initialized",
             extra={"tool": "orchestrator", "pipeline_stage": "init"},
@@ -129,6 +132,21 @@ class Orchestrator:
                 },
             )
 
+    def save_job_config(self):
+        fastapi_url = os.environ.get("FASTAPI_URL", "http://fastapi:8000")
+        payload = {"pipeline_config": self.job_config.to_dict()}
+        try:
+            response = requests.post(
+                f"{fastapi_url}/jobs/{self.job_id}/config", json=payload, timeout=10
+            )
+            response.raise_for_status()
+            self.logger.debug(f"Job config saved, response: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            self.logger.error(
+                f"Failed to save job config: {str(e)}",
+                extra={"tool": "orchestrator", "error": str(e)},
+            )
+
     def return_tools_timing(self):
         fastapi_url = os.environ.get("FASTAPI_URL", "http://fastapi:8000")
 
@@ -154,6 +172,7 @@ class Orchestrator:
     def run(self):
         try:
             self.update_job_status(JobStatus.RUNNING)
+            self.save_job_config()
             if not self._run_tool("merger"):
                 raise Exception("Merger failed")
 
@@ -213,7 +232,7 @@ class Orchestrator:
             module = __import__(module_name, fromlist=[class_name])
             tool_class = getattr(module, class_name)
 
-            tool = tool_class(self.docker_client, self.logger)
+            tool = tool_class(self.docker_client, self.logger, self.job_config)
             success = tool.run()
 
             if success:

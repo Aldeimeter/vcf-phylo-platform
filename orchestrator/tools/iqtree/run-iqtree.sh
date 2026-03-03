@@ -28,7 +28,8 @@ fi
 
 echo "Using phylip file: $PHYLIP_FILE"
 
-iqtree3 -s "$PHYLIP_FILE" -st DNA -m GTR+G -B 1000 -T AUTO -seed 12345
+SEED=${IQTREE_SEED:-12345}
+iqtree3 -s "$PHYLIP_FILE" -st DNA -m GTR+G -B 1000 -T AUTO -seed $SEED
 echo "Tree construction complete"
 
 echo "Step 3: Copying results to output directory"
