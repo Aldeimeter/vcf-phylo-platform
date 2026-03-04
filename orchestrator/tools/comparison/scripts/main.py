@@ -1,29 +1,17 @@
-import dendropy
-import os
+import copy
 import json
+import math
+import os
+
+import dendropy
 
 
-def rf_dist(tree1, tree2):
-    tree2.migrate_taxon_namespace(tree1.taxon_namespace)
-
-    rf_distance = dendropy.calculate.treecompare.symmetric_difference(tree1, tree2)
-    num_taxa = len(tree1.taxon_namespace)
-    max_rf = 2 * (num_taxa - 3) if num_taxa >= 3 else 0
-
-    return {
-        "raw_rf": rf_distance,
-        "normalized_rf": rf_distance / max_rf if max_rf > 0 else 0,
-    }
+SIMILARITY_THRESHOLD = 0.1
 
 
-def wrf_dist(tree1, tree2):
-    tree2.migrate_taxon_namespace(tree1.taxon_namespace)
-
-    wrf_distance = dendropy.calculate.treecompare.weighted_robinson_foulds_distance(
-        tree1, tree2
-    )
-
-    return {"wrf": wrf_distance}
+def deroot_if_needed(tree):
+    if len(tree.seed_node.child_nodes()) == 2:
+        tree.deroot()
 
 
 def load_trees():
@@ -38,7 +26,9 @@ def load_trees():
     for name, path in trees_path.items():
         if os.path.exists(path):
             try:
-                trees[name] = dendropy.Tree.get(path=path, schema="newick")
+                tree = dendropy.Tree.get(path=path, schema="newick")
+                deroot_if_needed(tree)
+                trees[name] = tree
                 print(f"Loaded {name} tree from {path}")
             except Exception as e:
                 print(f"Error loading {name} tree: {e}")
@@ -46,81 +36,125 @@ def load_trees():
     return trees
 
 
-def compare_topology(trees):
-    print("Comparing topologies")
+def normalize_branch_lengths(tree):
+    t = copy.deepcopy(tree)
+    total = sum(e.length for e in t.postorder_edge_iter() if e.length is not None)
+    if total > 0:
+        for edge in t.postorder_edge_iter():
+            if edge.length is not None:
+                edge.length /= total
+    return t
 
-    if len(trees) < 2:
-        print(
-            f"Error: Need at least 2 trees for comparison. Found: {list(trees.keys())}"
+
+def pearson_on_matched_splits(tree1, tree2):
+    tree1.encode_bipartitions()
+    tree2.encode_bipartitions()
+
+    splits1 = {
+        e.bipartition.split_bitmask: e.length
+        for e in tree1.postorder_edge_iter()
+        if e.bipartition is not None and e.length is not None
+    }
+    splits2 = {
+        e.bipartition.split_bitmask: e.length
+        for e in tree2.postorder_edge_iter()
+        if e.bipartition is not None and e.length is not None
+    }
+
+    common = set(splits1.keys()) & set(splits2.keys())
+    if len(common) < 2:
+        return None
+
+    x = [splits1[b] for b in common]
+    y = [splits2[b] for b in common]
+
+    n = len(x)
+    mean_x = sum(x) / n
+    mean_y = sum(y) / n
+    num = sum((a - mean_x) * (b - mean_y) for a, b in zip(x, y))
+    den = math.sqrt(
+        sum((a - mean_x) ** 2 for a in x) * sum((b - mean_y) ** 2 for b in y)
+    )
+
+    if den == 0:
+        return None
+    return num / den
+
+
+def compare_topology(tree1, tree2):
+    tree2.migrate_taxon_namespace(tree1.taxon_namespace)
+
+    raw_rf = dendropy.calculate.treecompare.symmetric_difference(tree1, tree2)
+    num_taxa = len(tree1.taxon_namespace)
+    max_rf = 2 * (num_taxa - 3) if num_taxa >= 3 else 0
+    normalized_rf = raw_rf / max_rf if max_rf > 0 else 0
+
+    return {
+        "raw_rf": raw_rf,
+        "normalized_rf": normalized_rf,
+        "similar": normalized_rf <= SIMILARITY_THRESHOLD,
+    }
+
+
+def compare_length(name1, name2, tree1, tree2, similar):
+    if not similar:
+        return None
+
+    involves_fastreer = "fastreer" in (name1, name2)
+
+    if not involves_fastreer:
+        wrf = dendropy.calculate.treecompare.weighted_robinson_foulds_distance(
+            tree1, tree2
         )
-        return
+        return {"comparison_type": "direct", "wrf": wrf}
 
-    results = {}
+    t1_norm = normalize_branch_lengths(tree1)
+    t2_norm = normalize_branch_lengths(tree2)
+    t2_norm.migrate_taxon_namespace(t1_norm.taxon_namespace)
 
-    tree_names = list(trees.keys())
+    wrf = dendropy.calculate.treecompare.weighted_robinson_foulds_distance(
+        t1_norm, t2_norm
+    )
+    pearson_r = pearson_on_matched_splits(t1_norm, t2_norm)
 
-    for i in range(len(tree_names)):
-        for j in range(i + 1, len(tree_names)):
-            tree1_name, tree2_name = tree_names[i], tree_names[j]
-            tree1, tree2 = trees[tree1_name], trees[tree2_name]
-
-            print(f"Comparing {tree1_name} vs {tree2_name}")
-
-            try:
-                rf_result = rf_dist(tree1, tree2)
-
-                comparison_key = f"{tree1_name}_vs_{tree2_name}"
-                results[comparison_key] = {"rf": rf_result}
-            except Exception as e:
-                print(f"Error comparing {tree1_name} vs {tree2_name}: {e}")
-                results[f"{tree1_name}_vs_{tree2_name}"] = {"error": str(e)}
-    return results
-
-
-def compare_length(trees):
-    print("Comparing branch lengths for compatible units")
-
-    results = {}
-    tree_names = list(trees.keys())
-
-    for i in range(len(tree_names)):
-        for j in range(i + 1, len(tree_names)):
-            tree1_name, tree2_name = tree_names[i], tree_names[j]
-            tree1, tree2 = trees[tree1_name], trees[tree2_name]
-
-            comparison_key = f"{tree1_name}_vs_{tree2_name}"
-
-            # Check if comparison uses compatible units
-            compatible = {tree1_name, tree2_name}.issubset({"iqtree", "mrbayes"})
-
-            if compatible:
-                try:
-                    wrf_result = wrf_dist(tree1, tree2)
-                    results[comparison_key] = {
-                        **wrf_result,
-                        "comparison_type": "compatible_units",
-                    }
-                except Exception as e:
-                    results[comparison_key] = {
-                        "error": str(e),
-                        "comparison_type": "compatible_units",
-                    }
-            else:
-                # For incompatible units (involving fastreer)
-                results[comparison_key] = {
-                    "comparison_type": "topology_only",
-                    "note": "Branch lengths incompatible - skipping length-sensitive metrics",
-                }
-
-    return results
+    result = {
+        "comparison_type": "normalized",
+        "normalization": "total_tree_length",
+        "wrf": wrf,
+    }
+    if pearson_r is not None:
+        result["pearson_r"] = pearson_r
+    return result
 
 
 def compare_trees(trees):
-    results_topology = compare_topology(trees)
-    results_length = compare_length(trees)
-    results = results_topology
-    for key in results_topology.keys():
-        results[key] = {**results_topology[key], **results_length[key]}
+    results = {}
+    tree_names = list(trees.keys())
+
+    for i in range(len(tree_names)):
+        for j in range(i + 1, len(tree_names)):
+            name1, name2 = tree_names[i], tree_names[j]
+            t1, t2 = trees[name1], trees[name2]
+            key = f"{name1}_vs_{name2}"
+
+            print(f"Comparing {name1} vs {name2}")
+
+            try:
+                topo = compare_topology(t1, t2)
+            except Exception as e:
+                print(f"Error comparing topology {name1} vs {name2}: {e}")
+                results[key] = {"topology": {"error": str(e)}, "branch_lengths": None}
+                continue
+
+            lengths = None
+            try:
+                lengths = compare_length(name1, name2, t1, t2, topo["similar"])
+            except Exception as e:
+                print(f"Error comparing branch lengths {name1} vs {name2}: {e}")
+                lengths = {"error": str(e)}
+
+            results[key] = {"topology": topo, "branch_lengths": lengths}
+
     output_path = "/results/results.json"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 

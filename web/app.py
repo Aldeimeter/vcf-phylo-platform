@@ -865,16 +865,31 @@ def server(input, output, session):
                         )
 
                         metric_items = []
-                        if "rf" in metrics:
-                            rf_data = metrics["rf"]
+
+                        topo = metrics.get("topology", {})
+                        if topo and "raw_rf" in topo:
+                            similar = topo.get("similar", False)
+                            badge_style = (
+                                "color:#1a7f37;font-weight:600"
+                                if similar
+                                else "color:#cf222e;font-weight:600"
+                            )
                             metric_items.extend(
                                 [
+                                    ui.div(
+                                        ui.span("Topology:", class_="metric-name"),
+                                        ui.span(
+                                            "Similar" if similar else "Divergent",
+                                            style=badge_style,
+                                        ),
+                                        class_="metric",
+                                    ),
                                     ui.div(
                                         ui.span(
                                             "Raw RF Distance:", class_="metric-name"
                                         ),
                                         ui.span(
-                                            format_number(rf_data.get("raw_rf", 0)),
+                                            format_number(topo.get("raw_rf", 0)),
                                             class_="metric-value",
                                         ),
                                         class_="metric",
@@ -886,7 +901,7 @@ def server(input, output, session):
                                         ),
                                         ui.span(
                                             format_number(
-                                                rf_data.get("normalized_rf", 0)
+                                                topo.get("normalized_rf", 0)
                                             ),
                                             class_="metric-value",
                                         ),
@@ -895,19 +910,37 @@ def server(input, output, session):
                                 ]
                             )
 
-                        if "wrf" in metrics:
+                        lengths = metrics.get("branch_lengths")
+                        if lengths and "wrf" in lengths:
+                            comparison_type = lengths.get("comparison_type", "")
+                            if comparison_type == "normalized":
+                                label = "Weighted RF Distance (normalized):"
+                            else:
+                                label = "Weighted RF Distance:"
                             metric_items.append(
                                 ui.div(
+                                    ui.span(label, class_="metric-name"),
                                     ui.span(
-                                        "Weighted RF Distance:", class_="metric-name"
-                                    ),
-                                    ui.span(
-                                        format_number(metrics["wrf"]),
+                                        format_number(lengths["wrf"]),
                                         class_="metric-value",
                                     ),
                                     class_="metric",
                                 )
                             )
+                            if "pearson_r" in lengths:
+                                metric_items.append(
+                                    ui.div(
+                                        ui.span(
+                                            "Branch Length Correlation (Pearson):",
+                                            class_="metric-name",
+                                        ),
+                                        ui.span(
+                                            format_number(lengths["pearson_r"]),
+                                            class_="metric-value",
+                                        ),
+                                        class_="metric",
+                                    )
+                                )
 
                         content.append(
                             ui.div(
