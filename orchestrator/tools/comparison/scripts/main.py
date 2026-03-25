@@ -1,12 +1,8 @@
-import copy
 import json
 import math
 import os
 
 import dendropy
-
-
-SIMILARITY_THRESHOLD = 0.1
 
 
 def deroot_if_needed(tree):
@@ -36,95 +32,92 @@ def load_trees():
     return trees
 
 
-def normalize_branch_lengths(tree):
-    t = copy.deepcopy(tree)
-    total = sum(e.length for e in t.postorder_edge_iter() if e.length is not None)
-    if total > 0:
-        for edge in t.postorder_edge_iter():
-            if edge.length is not None:
-                edge.length /= total
-    return t
-
-
-def pearson_on_matched_splits(tree1, tree2):
-    tree1.encode_bipartitions()
-    tree2.encode_bipartitions()
-
-    splits1 = {
-        e.bipartition.split_bitmask: e.length
-        for e in tree1.postorder_edge_iter()
-        if e.bipartition is not None and e.length is not None
-    }
-    splits2 = {
-        e.bipartition.split_bitmask: e.length
-        for e in tree2.postorder_edge_iter()
-        if e.bipartition is not None and e.length is not None
-    }
-
-    common = set(splits1.keys()) & set(splits2.keys())
-    if len(common) < 2:
-        return None
-
-    x = [splits1[b] for b in common]
-    y = [splits2[b] for b in common]
-
-    n = len(x)
-    mean_x = sum(x) / n
-    mean_y = sum(y) / n
-    num = sum((a - mean_x) * (b - mean_y) for a, b in zip(x, y))
-    den = math.sqrt(
-        sum((a - mean_x) ** 2 for a in x) * sum((b - mean_y) ** 2 for b in y)
-    )
-
-    if den == 0:
-        return None
-    return num / den
-
-
-def compare_topology(tree1, tree2):
+def topology_similarity(tree1, tree2):
+    """
+    Returns topology similarity in % using normalized Robinson-Foulds distance.
+    100% = identical topology, 0% = maximally different.
+    """
     tree2.migrate_taxon_namespace(tree1.taxon_namespace)
 
     raw_rf = dendropy.calculate.treecompare.symmetric_difference(tree1, tree2)
     num_taxa = len(tree1.taxon_namespace)
     max_rf = 2 * (num_taxa - 3) if num_taxa >= 3 else 0
     normalized_rf = raw_rf / max_rf if max_rf > 0 else 0
+    similarity = (1.0 - normalized_rf) * 100.0
 
     return {
+        "similarity_pct": round(similarity, 2),
         "raw_rf": raw_rf,
-        "normalized_rf": normalized_rf,
-        "similar": normalized_rf <= SIMILARITY_THRESHOLD,
+        "normalized_rf": round(normalized_rf, 4),
     }
 
 
-def compare_length(name1, name2, tree1, tree2, similar):
-    if not similar:
+def patristic_distances(tree):
+    """
+    Returns a dict of {(taxon_label_a, taxon_label_b): distance} for all pairs.
+    Uses PDM (patristic distance matrix) from dendropy.
+    """
+    pdm = tree.phylogenetic_distance_matrix()
+    distances = {}
+    taxa = list(tree.taxon_namespace)
+    for i in range(len(taxa)):
+        for j in range(i + 1, len(taxa)):
+            key = tuple(sorted([taxa[i].label, taxa[j].label]))
+            distances[key] = pdm(taxa[i], taxa[j])
+    return distances
+
+
+def pearson(x, y):
+    n = len(x)
+    if n < 2:
         return None
-
-    involves_fastreer = "fastreer" in (name1, name2)
-
-    if not involves_fastreer:
-        wrf = dendropy.calculate.treecompare.weighted_robinson_foulds_distance(
-            tree1, tree2
-        )
-        return {"comparison_type": "direct", "wrf": wrf}
-
-    t1_norm = normalize_branch_lengths(tree1)
-    t2_norm = normalize_branch_lengths(tree2)
-    t2_norm.migrate_taxon_namespace(t1_norm.taxon_namespace)
-
-    wrf = dendropy.calculate.treecompare.weighted_robinson_foulds_distance(
-        t1_norm, t2_norm
+    mean_x = sum(x) / n
+    mean_y = sum(y) / n
+    num = sum((a - mean_x) * (b - mean_y) for a, b in zip(x, y))
+    den = math.sqrt(
+        sum((a - mean_x) ** 2 for a in x) * sum((b - mean_y) ** 2 for b in y)
     )
-    pearson_r = pearson_on_matched_splits(t1_norm, t2_norm)
+    if den == 0:
+        return None
+    return num / den
 
-    result = {
-        "comparison_type": "normalized",
-        "normalization": "total_tree_length",
-        "wrf": wrf,
+
+def branch_length_similarity(tree1, tree2):
+    """
+    Returns branch length similarity in % using Pearson correlation of
+    normalized patristic distance matrices. Normalization by total sum
+    makes it scale-independent (handles FastReer's different unit scale).
+    100% = perfectly proportional branch lengths, 0% = no correlation.
+    """
+    d1 = patristic_distances(tree1)
+    d2 = patristic_distances(tree2)
+
+    common_pairs = set(d1.keys()) & set(d2.keys())
+    if len(common_pairs) < 2:
+        return {"similarity_pct": None, "reason": "insufficient_common_taxa"}
+
+    v1 = [d1[k] for k in common_pairs]
+    v2 = [d2[k] for k in common_pairs]
+
+    # Normalize by total sum so scale differences (e.g. FastReer vs IQ-TREE) don't affect the result
+    sum1 = sum(v1)
+    sum2 = sum(v2)
+    if sum1 > 0:
+        v1 = [x / sum1 for x in v1]
+    if sum2 > 0:
+        v2 = [x / sum2 for x in v2]
+
+    r = pearson(v1, v2)
+    if r is None:
+        return {"similarity_pct": None, "reason": "zero_variance"}
+
+    similarity = max(0.0, r) * 100.0
+
+    return {
+        "similarity_pct": round(similarity, 2),
+        "pearson_r": round(r, 4),
+        "pairs_used": len(common_pairs),
     }
-    if pearson_r is not None:
-        result["pearson_r"] = pearson_r
-    return result
 
 
 def compare_trees(trees):
@@ -139,21 +132,30 @@ def compare_trees(trees):
 
             print(f"Comparing {name1} vs {name2}")
 
+            topo = None
             try:
-                topo = compare_topology(t1, t2)
+                topo = topology_similarity(t1, t2)
             except Exception as e:
-                print(f"Error comparing topology {name1} vs {name2}: {e}")
-                results[key] = {"topology": {"error": str(e)}, "branch_lengths": None}
-                continue
+                print(f"Topology comparison error ({key}): {e}")
+                topo = {"error": str(e)}
 
             lengths = None
             try:
-                lengths = compare_length(name1, name2, t1, t2, topo["similar"])
+                lengths = branch_length_similarity(t1, t2)
             except Exception as e:
-                print(f"Error comparing branch lengths {name1} vs {name2}: {e}")
+                print(f"Branch length comparison error ({key}): {e}")
                 lengths = {"error": str(e)}
 
-            results[key] = {"topology": topo, "branch_lengths": lengths}
+            results[key] = {
+                "topology": topo,
+                "branch_lengths": lengths,
+            }
+
+            if topo and "similarity_pct" in topo and lengths and "similarity_pct" in lengths:
+                t_pct = topo["similarity_pct"]
+                b_pct = lengths["similarity_pct"]
+                b_str = f"{b_pct}%" if b_pct is not None else "N/A"
+                print(f"  topology: {t_pct}%  branch lengths: {b_str}")
 
     output_path = "/results/results.json"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

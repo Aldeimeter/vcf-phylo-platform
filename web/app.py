@@ -859,94 +859,84 @@ def server(input, output, session):
                 comparison_data = fetch_results_json(results_json.get("url", ""))
                 if comparison_data:
                     content.append(ui.h4("Comparison Results"))
+                    content.append(ui.p("Topology is compared as unrooted trees.", class_="text-muted", style="font-size:0.85em;margin-bottom:12px;"))
                     for comparison, metrics in comparison_data.items():
-                        title = (
-                            comparison.replace("_vs_", " vs ").replace("_", " ").upper()
+                        title = comparison.replace("_vs_", " vs ").replace("_", " ").upper()
+
+                        topo = metrics.get("topology") or {}
+                        lengths = metrics.get("branch_lengths") or {}
+
+                        topo_pct = topo.get("similarity_pct")
+                        bl_pct = lengths.get("similarity_pct")
+
+                        def pct_color(pct):
+                            if pct is None:
+                                return "#6c757d"
+                            if pct >= 80:
+                                return "#1a7f37"
+                            if pct >= 50:
+                                return "#856404"
+                            return "#cf222e"
+
+                        def pct_bar(pct):
+                            if pct is None:
+                                return ui.span("N/A", style="color:#6c757d;font-size:1.4em;font-weight:700;")
+                            color = pct_color(pct)
+                            return ui.div(
+                                ui.div(
+                                    style=f"width:{pct}%;background:{color};height:8px;border-radius:4px;transition:width 0.3s;",
+                                ),
+                                style="background:#e9ecef;border-radius:4px;margin-top:4px;",
+                            )
+
+                        topo_block = ui.div(
+                            ui.div(
+                                ui.span("Topology similarity", style="color:#6c757d;font-size:0.85em;"),
+                                ui.span(
+                                    f"{topo_pct}%" if topo_pct is not None else "N/A",
+                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(topo_pct)};",
+                                ),
+                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ),
+                            pct_bar(topo_pct),
+                            ui.div(
+                                ui.span(f"RF distance: {topo.get('raw_rf', '—')}  |  normalized: {format_number(topo.get('normalized_rf', 0))}", style="color:#6c757d;font-size:0.8em;")
+                                if "raw_rf" in topo else ui.span(""),
+                                style="margin-top:4px;",
+                            ),
+                            style="flex:1;padding:12px 16px;",
                         )
 
-                        metric_items = []
-
-                        topo = metrics.get("topology", {})
-                        if topo and "raw_rf" in topo:
-                            similar = topo.get("similar", False)
-                            badge_style = (
-                                "color:#1a7f37;font-weight:600"
-                                if similar
-                                else "color:#cf222e;font-weight:600"
-                            )
-                            metric_items.extend(
-                                [
-                                    ui.div(
-                                        ui.span("Topology:", class_="metric-name"),
-                                        ui.span(
-                                            "Similar" if similar else "Divergent",
-                                            style=badge_style,
-                                        ),
-                                        class_="metric",
-                                    ),
-                                    ui.div(
-                                        ui.span(
-                                            "Raw RF Distance:", class_="metric-name"
-                                        ),
-                                        ui.span(
-                                            format_number(topo.get("raw_rf", 0)),
-                                            class_="metric-value",
-                                        ),
-                                        class_="metric",
-                                    ),
-                                    ui.div(
-                                        ui.span(
-                                            "Normalized RF Distance:",
-                                            class_="metric-name",
-                                        ),
-                                        ui.span(
-                                            format_number(
-                                                topo.get("normalized_rf", 0)
-                                            ),
-                                            class_="metric-value",
-                                        ),
-                                        class_="metric",
-                                    ),
-                                ]
-                            )
-
-                        lengths = metrics.get("branch_lengths")
-                        if lengths and "wrf" in lengths:
-                            comparison_type = lengths.get("comparison_type", "")
-                            if comparison_type == "normalized":
-                                label = "Weighted RF Distance (normalized):"
-                            else:
-                                label = "Weighted RF Distance:"
-                            metric_items.append(
-                                ui.div(
-                                    ui.span(label, class_="metric-name"),
-                                    ui.span(
-                                        format_number(lengths["wrf"]),
-                                        class_="metric-value",
-                                    ),
-                                    class_="metric",
+                        bl_block = ui.div(
+                            ui.div(
+                                ui.span("Branch length similarity", style="color:#6c757d;font-size:0.85em;"),
+                                ui.span(
+                                    f"{bl_pct}%" if bl_pct is not None else "N/A",
+                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(bl_pct)};",
+                                ),
+                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ),
+                            pct_bar(bl_pct),
+                            ui.div(
+                                ui.span(
+                                    f"Pearson r: {format_number(lengths['pearson_r'])}  |  pairs: {lengths.get('pairs_used', '—')}",
+                                    style="color:#6c757d;font-size:0.8em;",
                                 )
-                            )
-                            if "pearson_r" in lengths:
-                                metric_items.append(
-                                    ui.div(
-                                        ui.span(
-                                            "Branch Length Correlation (Pearson):",
-                                            class_="metric-name",
-                                        ),
-                                        ui.span(
-                                            format_number(lengths["pearson_r"]),
-                                            class_="metric-value",
-                                        ),
-                                        class_="metric",
-                                    )
-                                )
+                                if "pearson_r" in lengths else ui.span(
+                                    lengths.get("reason", ""),
+                                    style="color:#6c757d;font-size:0.8em;",
+                                ),
+                                style="margin-top:4px;",
+                            ),
+                            style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
+                        )
 
                         content.append(
                             ui.div(
-                                ui.div(title, class_="comparison-title"),
-                                *metric_items,
+                                ui.div(title, class_="comparison-title", style="padding:12px 16px 0;"),
+                                ui.div(topo_block, bl_block, style="display:flex;"),
                                 class_="comparison-result",
+                                style="padding:0;",
                             )
                         )
 
