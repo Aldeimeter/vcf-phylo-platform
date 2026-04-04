@@ -3,6 +3,9 @@ import os
 from pathlib import Path
 from shiny import App, render, ui, reactive
 from starlette.requests import Request
+from starlette.responses import Response as StarletteResponse
+from starlette.routing import Route, Mount
+from starlette.applications import Starlette
 from typing import Dict, Any, Optional, List
 
 BACKEND_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
@@ -813,7 +816,24 @@ def server(input, output, session):
         if results_data:
             content.append(ui.hr())
             content.append(ui.h3("Results"))
-            content.append(ui.div("Results available.", class_="alert alert-success"))
+            content.append(
+                ui.div(
+                    ui.div("Results available.", class_="alert alert-success"),
+                    ui.div(
+                        ui.a(
+                            "Export HTML",
+                            href=f"/export/{job_id}/html",
+                            class_="btn btn-outline-secondary btn-sm me-2",
+                        ),
+                        ui.a(
+                            "Export PDF",
+                            href=f"/export/{job_id}/pdf",
+                            class_="btn btn-outline-secondary btn-sm",
+                        ),
+                        class_="mb-3",
+                    ),
+                )
+            )
 
             # NWK Files
             nwk_files = results_data.get("nwk_files", [])
@@ -1037,5 +1057,25 @@ def server(input, output, session):
         return current_logs.get()
 
 
-# Create the app with URL bookmarking enabled
-app = App(app_ui, server, static_assets={"/assets": Path(__file__).parent / "www"})
+# Export proxy — browser hits /export/{job_id}/{fmt}, frontend fetches from FastAPI
+def export_proxy(request: Request) -> StarletteResponse:
+    job_id = request.path_params["job_id"]
+    fmt = request.path_params["fmt"]
+    try:
+        resp = requests.get(f"{BACKEND_URL}/jobs/{job_id}/export/{fmt}", timeout=60)
+        return StarletteResponse(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/octet-stream"),
+            headers={"Content-Disposition": resp.headers.get("content-disposition", "")},
+        )
+    except Exception as e:
+        return StarletteResponse(content=f"Export failed: {e}", status_code=502)
+
+
+_shiny_app = App(app_ui, server, static_assets={"/assets": Path(__file__).parent / "www"})
+
+app = Starlette(routes=[
+    Route("/export/{job_id}/{fmt}", export_proxy),
+    Mount("/", app=_shiny_app),
+])
