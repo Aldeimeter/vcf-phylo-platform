@@ -416,7 +416,7 @@ def app_ui(request: Request):
 # Server Logic
 def server(input, output, session):
     # Reactive state
-    datasets_list = reactive.value([])
+    datasets_list = reactive.value(None)
     selected_dataset = reactive.value(None)
     jobs_list = reactive.value([])
     current_job_data = reactive.value(None)
@@ -556,19 +556,36 @@ def server(input, output, session):
 
         error_ui = ui.div(error, class_="error-message") if error else None
 
-        if not datasets:
+        if datasets is None:
             datasets_content = ui.p("Loading datasets...", class_="text-muted")
+        elif not datasets:
+            datasets_content = ui.p("No datasets available. Add VCF files to the datasets directory.", class_="text-muted")
         else:
-            choices = [""] + datasets
-            choice_labels = ["Select a dataset..."] + datasets
-            choices_dict = dict(zip(choices, choice_labels))
+            choices_dict = {"": "Select a dataset..."}
+            for d in datasets:
+                label = d["name"] if d["vcf_count"] >= 3 else f"{d['name']} ({d['vcf_count']} file{'s' if d['vcf_count'] != 1 else ''} — need at least 3)"
+                choices_dict[d["name"]] = label
 
-            datasets_content = ui.input_selectize(
-                "selected_dataset_dropdown",
-                "Available Datasets:",
-                choices=choices_dict,
-                selected="",
-                multiple=False,
+            selected_name = selected_dataset.get()
+            selected_ds = next((d for d in datasets if d["name"] == selected_name), None)
+            insufficient_warning = (
+                ui.div(
+                    f"This dataset only has {selected_ds['vcf_count']} VCF file{'s' if selected_ds['vcf_count'] != 1 else ''}. At least 3 are required for the pipeline.",
+                    class_="alert alert-warning mt-2",
+                )
+                if selected_ds and selected_ds["vcf_count"] < 3
+                else None
+            )
+
+            datasets_content = ui.div(
+                ui.input_selectize(
+                    "selected_dataset_dropdown",
+                    "Available Datasets:",
+                    choices=choices_dict,
+                    selected=selected_name or "",
+                    multiple=False,
+                ),
+                insufficient_warning,
             )
 
         pipeline_steps = [
@@ -667,7 +684,7 @@ def server(input, output, session):
             ui.input_selectize(
                 "jobs_filter_dataset_input",
                 "Filter by Dataset:",
-                choices={"": "All Datasets", **{d: d for d in datasets}},
+                choices={"": "All Datasets", **{d["name"]: d["name"] for d in (datasets or [])}},
                 selected=current_dataset_filter,
                 width="100%",
             ),
@@ -962,6 +979,12 @@ def server(input, output, session):
         dataset = selected_dataset.get()
         if not dataset:
             error_message.set("Please select a dataset first")
+            return
+
+        datasets = datasets_list.get() or []
+        selected_ds = next((d for d in datasets if d["name"] == dataset), None)
+        if selected_ds and selected_ds["vcf_count"] < 3:
+            error_message.set(f"Dataset '{dataset}' has only {selected_ds['vcf_count']} VCF file(s). At least 3 are required.")
             return
 
         def read_seed(input_fn):

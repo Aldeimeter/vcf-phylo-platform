@@ -13,10 +13,14 @@ def get_datasets():
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail=f"Datasets directory not found: {DATASETS_PATH}")
 
-    def has_vcf(folder):
-        return any(f.endswith(".vcf") or f.endswith(".vcf.gz") for f in os.listdir(folder))
+    def vcf_count(folder):
+        return sum(1 for f in os.listdir(folder) if f.endswith(".vcf"))
 
-    return [
-        e for e in entries
-        if os.path.isdir(path := os.path.join(DATASETS_PATH, e)) and has_vcf(path)
-    ]
+    result = []
+    for e in entries:
+        path = os.path.join(DATASETS_PATH, e)
+        if os.path.isdir(path):
+            count = vcf_count(path)
+            if count > 0:
+                result.append({"name": e, "vcf_count": count})
+    return result
