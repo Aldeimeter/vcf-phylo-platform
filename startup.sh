@@ -38,6 +38,7 @@ error() {
 }
 
 step 1 "Starting Docker registry"
+docker-compose down --remove-orphans 2>/dev/null || true
 docker-compose up -d registry
 sleep 3
 
