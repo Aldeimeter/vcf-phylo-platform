@@ -55,7 +55,7 @@ async def create_job(request_body: CreateRequestBody):
             os.environ["CACHE_PATH"]: {"bind": "/cache", "mode": "rw"},
         },
         environment=orchestrator_env,
-        network="phylo-net",
+        network=os.environ.get("DOCKER_NETWORK", "phylo-net"),
         remove=True,
         privileged=True,
         detach=True,
