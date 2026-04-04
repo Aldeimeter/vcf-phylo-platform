@@ -1,0 +1,369 @@
+import json
+import os
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
+
+from app.services.job_storage import job_storage
+
+router = APIRouter(prefix="/jobs", tags=["export"])
+
+
+def _fmt_dt(dt) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else "—"
+
+
+def _duration(started_at, completed_at) -> str:
+    if not started_at or not completed_at:
+        return "—"
+    secs = int((completed_at - started_at).total_seconds())
+    m, s = divmod(secs, 60)
+    return f"{m}m {s}s" if m else f"{s}s"
+
+
+def _pct_badge(value) -> str:
+    if value is None:
+        return '<span class="badge badge-na">N/A</span>'
+    color = "badge-high" if value >= 70 else ("badge-mid" if value >= 40 else "badge-low")
+    return f'<span class="badge {color}">{value}%</span>'
+
+
+def _status_badge(status: str) -> str:
+    css = {
+        "completed": "badge-high",
+        "running": "badge-mid",
+        "pending": "badge-na",
+        "failed": "badge-low",
+    }.get(status, "badge-na")
+    return f'<span class="badge {css}">{status}</span>'
+
+
+def _render_comparison(results_json: dict) -> str:
+    rows = ""
+    for pair_key, data in results_json.items():
+        tool_a, tool_b = pair_key.split("_vs_")
+        topo = data.get("topology") or {}
+        bl = data.get("branch_lengths") or {}
+
+        topo_pct = topo.get("similarity_pct")
+        bl_pct = bl.get("similarity_pct")
+
+        topo_detail = ""
+        if "raw_rf" in topo:
+            topo_detail = f'RF={topo["raw_rf"]}, norm={topo.get("normalized_rf", "—")}'
+        elif "error" in topo:
+            topo_detail = f'error: {topo["error"]}'
+
+        bl_detail = ""
+        if "pearson_r" in bl:
+            bl_detail = f'r={bl["pearson_r"]}, n={bl.get("pairs_used", "—")}'
+        elif "reason" in bl:
+            bl_detail = bl["reason"]
+        elif "error" in bl:
+            bl_detail = f'error: {bl["error"]}'
+
+        rows += f"""
+        <tr>
+          <td><strong>{tool_a}</strong> vs <strong>{tool_b}</strong></td>
+          <td>{_pct_badge(topo_pct)}<br><small>{topo_detail}</small></td>
+          <td>{_pct_badge(bl_pct)}<br><small>{bl_detail}</small></td>
+        </tr>"""
+
+    return f"""
+    <p class="note">Trees are unrooted before comparison. Topology similarity uses the normalized Robinson-Foulds distance; branch length similarity uses Pearson correlation of normalized patristic distances.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Pair</th>
+          <th>Topology similarity</th>
+          <th>Branch length similarity</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>"""
+
+
+def _render_timing(tools_timing) -> str:
+    if not tools_timing:
+        return "<p>No timing data available.</p>"
+
+    rows = ""
+    for tool, secs in tools_timing.model_dump().items():
+        if secs is not None:
+            rows += f"<tr><td>{tool}</td><td>{secs:.2f}s</td></tr>"
+
+    if not rows:
+        return "<p>No timing data available.</p>"
+
+    return f"""
+    <table>
+      <thead><tr><th>Tool</th><th>Duration</th></tr></thead>
+      <tbody>{rows}</tbody>
+    </table>"""
+
+
+def _collect_nwk_trees(results_path: Path) -> list[dict]:
+    """Return [{tool, newick}] for each .nwk file found."""
+    trees = []
+    for tool_dir in sorted(results_path.iterdir()):
+        if not tool_dir.is_dir():
+            continue
+        for nwk_file in tool_dir.glob("*.nwk"):
+            trees.append({
+                "tool": tool_dir.name,
+                "newick": nwk_file.read_text().strip(),
+            })
+    return trees
+
+
+_TREE_JS = r"""
+function parseNewick(s) {
+  var ancestors = [], tree = {}, tokens = s.split(/\s*(;|\(|\)|,|:)\s*/);
+  for (var i = 0; i < tokens.length; i++) {
+    var token = tokens[i], subtree = {};
+    switch (token) {
+      case '(':
+        tree.children = [subtree]; ancestors.push(tree); tree = subtree; break;
+      case ',':
+        ancestors[ancestors.length-1].children.push(subtree); tree = subtree; break;
+      case ')':
+        tree = ancestors.pop(); break;
+      case ':': break;
+      default:
+        var prev = tokens[i-1];
+        if (prev === ')' || prev === '(' || prev === ',') tree.name = token;
+        else if (prev === ':') tree.length = parseFloat(token);
+    }
+  }
+  return tree;
+}
+
+(function renderTrees() {
+  if (typeof TREES === 'undefined' || !Array.isArray(TREES)) return;
+  TREES.forEach(function({tool, newick}) {
+    var container = document.getElementById('tree-' + tool);
+    if (!container) return;
+
+    var parsed;
+    try { parsed = parseNewick(newick); } catch(e) {
+      container.textContent = 'Failed to parse Newick: ' + e;
+      return;
+    }
+
+    var root = d3.hierarchy(parsed, function(d) { return d.children; });
+    var leafCount = root.leaves().length;
+
+    var rowHeight   = 28;
+    var marginTop   = 16;
+    var marginBot   = 16;
+    var marginLeft  = 16;
+    var marginRight = 200;
+    var svgWidth    = 700;
+    var innerWidth  = svgWidth - marginLeft - marginRight;
+    var innerHeight = Math.max(leafCount * rowHeight, 80);
+    var svgHeight   = innerHeight + marginTop + marginBot;
+
+    var cluster = d3.cluster().size([innerHeight, innerWidth]);
+    cluster(root);
+
+    var svg = d3.select(container)
+      .append('svg')
+        .attr('width', svgWidth)
+        .attr('height', svgHeight)
+        .attr('style', 'max-width:100%;height:auto;');
+
+    var g = svg.append('g')
+      .attr('transform', 'translate(' + marginLeft + ',' + marginTop + ')');
+
+    // Elbow links (classic phylogenetic style)
+    g.selectAll('.tree-link')
+      .data(root.links())
+      .join('path')
+        .attr('class', 'tree-link')
+        .attr('d', function(d) {
+          return 'M' + d.source.y + ',' + d.source.x
+               + 'V' + d.target.x
+               + 'H' + d.target.y;
+        });
+
+    var node = g.selectAll('.tree-node')
+      .data(root.descendants())
+      .join('g')
+        .attr('class', 'tree-node')
+        .attr('transform', function(d) {
+          return 'translate(' + d.y + ',' + d.x + ')';
+        });
+
+    node.append('circle').attr('r', 3);
+
+    // Leaf labels
+    node.filter(function(d) { return !d.children; })
+      .append('text')
+        .attr('class', 'leaf-label')
+        .attr('x', 8)
+        .attr('dy', '0.32em')
+        .text(function(d) { return d.data.name || ''; });
+
+    // Bootstrap values on internal non-root nodes
+    node.filter(function(d) { return d.children && d.parent && d.data.name; })
+      .append('text')
+        .attr('class', 'bootstrap-label')
+        .attr('x', -6)
+        .attr('dy', '-0.4em')
+        .text(function(d) { return d.data.name; });
+  });
+})();
+"""
+
+
+def render_html_report(job, results_path: Path) -> str:
+    pipeline_status = job.pipeline_status
+    tool_statuses = pipeline_status.model_dump() if pipeline_status else {}
+
+    status_rows = "".join(
+        f"<tr><td>{tool}</td><td>{_status_badge(status)}</td></tr>"
+        for tool, status in tool_statuses.items()
+    )
+
+    config = job.pipeline_config
+    config_rows = ""
+    if config:
+        for k, v in config.model_dump().items():
+            config_rows += f"<tr><td>{k}</td><td>{v}</td></tr>"
+
+    comparison_html = "<p>No comparison results available.</p>"
+    results_json_path = results_path / "comparison" / "results.json"
+    if results_json_path.exists():
+        try:
+            data = json.loads(results_json_path.read_text())
+            comparison_html = _render_comparison(data)
+        except Exception:
+            comparison_html = "<p>Failed to parse comparison results.</p>"
+
+    timing_html = _render_timing(job.tools_timing)
+
+    trees = _collect_nwk_trees(results_path)
+    trees_json = json.dumps(trees)
+
+    tree_sections = ""
+    if trees:
+        for t in trees:
+            tree_sections += f"""
+    <div class="tree-card">
+      <h3>{t["tool"]}</h3>
+      <div id="tree-{t["tool"]}"></div>
+      <details>
+        <summary>Raw Newick</summary>
+        <pre class="nwk">{t["newick"]}</pre>
+      </details>
+    </div>"""
+    else:
+        tree_sections = "<p>No Newick files found.</p>"
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Report — {job.id}</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; }}
+    body {{ font-family: system-ui, sans-serif; margin: 0; padding: 2rem; background: #f8f9fa; color: #212529; }}
+    h1 {{ font-size: 1.5rem; margin-bottom: 0.25rem; }}
+    h2 {{ font-size: 1.1rem; margin: 2rem 0 0.75rem; border-bottom: 1px solid #dee2e6; padding-bottom: 0.4rem; }}
+    h3 {{ font-size: 0.95rem; margin: 0 0 0.5rem; color: #495057; }}
+    .meta {{ color: #6c757d; font-size: 0.85rem; margin-bottom: 2rem; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 0.875rem; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }}
+    th {{ background: #f1f3f5; text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; }}
+    td {{ padding: 0.5rem 0.75rem; border-top: 1px solid #e9ecef; vertical-align: top; }}
+    small {{ color: #868e96; }}
+    .badge {{ display: inline-block; padding: 0.15em 0.55em; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }}
+    .badge-high {{ background: #d3f9d8; color: #1a7f37; }}
+    .badge-mid  {{ background: #fff3cd; color: #856404; }}
+    .badge-low  {{ background: #ffe3e3; color: #c92a2a; }}
+    .badge-na   {{ background: #e9ecef; color: #495057; }}
+    section {{ margin-bottom: 2rem; }}
+    /* Tree */
+    .tree-card {{ background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,.08); }}
+    .tree-link {{ fill: none; stroke: #495057; stroke-width: 1.5px; }}
+    .tree-node circle {{ fill: #495057; }}
+    .leaf-label {{ font-size: 12px; fill: #212529; font-family: system-ui, sans-serif; }}
+    .bootstrap-label {{ font-size: 10px; fill: #868e96; font-family: system-ui, sans-serif; text-anchor: end; }}
+    .note {{ font-size: 0.8rem; color: #6c757d; margin: 0 0 0.75rem; }}
+    details {{ margin-top: 0.75rem; }}
+    summary {{ font-size: 0.8rem; color: #6c757d; cursor: pointer; }}
+    pre.nwk {{ background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 0.5rem 0.75rem; font-size: 0.75rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0.5rem 0 0; }}
+  </style>
+</head>
+<body>
+  <h1>Phylogenetic Analysis Report</h1>
+  <p class="meta">Job ID: <code>{job.id}</code> &nbsp;|&nbsp; Dataset: <code>{job.dataset_id}</code></p>
+
+  <section>
+    <h2>Job summary</h2>
+    <table>
+      <tbody>
+        <tr><td><strong>Status</strong></td><td>{_status_badge(job.status)}</td></tr>
+        <tr><td><strong>Created</strong></td><td>{_fmt_dt(job.created_at)}</td></tr>
+        <tr><td><strong>Started</strong></td><td>{_fmt_dt(job.started_at)}</td></tr>
+        <tr><td><strong>Completed</strong></td><td>{_fmt_dt(job.completed_at)}</td></tr>
+        <tr><td><strong>Total duration</strong></td><td>{_duration(job.started_at, job.completed_at)}</td></tr>
+        {f'<tr><td><strong>Error</strong></td><td><code>{job.error}</code></td></tr>' if job.error else ''}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Pipeline status</h2>
+    <table>
+      <thead><tr><th>Tool</th><th>Status</th></tr></thead>
+      <tbody>{status_rows}</tbody>
+    </table>
+  </section>
+
+  {f'''<section>
+    <h2>Pipeline configuration</h2>
+    <table>
+      <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+      <tbody>{config_rows}</tbody>
+    </table>
+  </section>''' if config_rows else ''}
+
+  <section>
+    <h2>Tool timing</h2>
+    {timing_html}
+  </section>
+
+  <section>
+    <h2>Tree comparison</h2>
+    {comparison_html}
+  </section>
+
+  <section>
+    <h2>Phylogenetic trees</h2>
+    {tree_sections}
+  </section>
+
+  <script>
+    const TREES = {trees_json};
+    {_TREE_JS}
+  </script>
+</body>
+</html>"""
+
+
+@router.get("/{job_id}/export/html", response_class=HTMLResponse)
+async def export_html(job_id: str):
+    job = await job_storage.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    results_path = Path(os.environ["STATIC_PATH"], job_id)
+    if not results_path.exists():
+        raise HTTPException(status_code=404, detail="Results not found")
+
+    html = render_html_report(job, results_path)
+    headers = {"Content-Disposition": f'attachment; filename="report_{job_id}.html"'}
+    return HTMLResponse(content=html, headers=headers)
