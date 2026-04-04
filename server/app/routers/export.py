@@ -1,14 +1,19 @@
 import json
 import os
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from app.services.job_storage import job_storage
 
 router = APIRouter(prefix="/jobs", tags=["export"])
 
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
 def _fmt_dt(dt) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else "—"
@@ -104,7 +109,6 @@ def _render_timing(tools_timing) -> str:
 
 
 def _collect_nwk_trees(results_path: Path) -> list[dict]:
-    """Return [{tool, newick}] for each .nwk file found."""
     trees = []
     for tool_dir in sorted(results_path.iterdir()):
         if not tool_dir.is_dir():
@@ -116,6 +120,164 @@ def _collect_nwk_trees(results_path: Path) -> list[dict]:
             })
     return trees
 
+
+# ---------------------------------------------------------------------------
+# Server-side SVG tree renderer (used for PDF; HTML uses D3)
+# ---------------------------------------------------------------------------
+
+def _parse_newick(s: str) -> dict:
+    node: dict = {}
+    ancestors: list = []
+    tokens = re.split(r'\s*(;|\(|\)|,|:)\s*', s.strip().rstrip(";"))
+    for i, token in enumerate(tokens):
+        prev = tokens[i - 1] if i > 0 else ""
+        if token == "(":
+            child: dict = {}
+            node.setdefault("children", []).append(child)
+            ancestors.append(node)
+            node = child
+        elif token == ",":
+            child = {}
+            ancestors[-1].setdefault("children", []).append(child)
+            node = child
+        elif token == ")":
+            node = ancestors.pop()
+        elif token == ":":
+            pass
+        elif token.strip():
+            if prev in (")", "(", ","):
+                node["name"] = token.strip()
+            elif prev == ":":
+                try:
+                    node["length"] = float(token)
+                except ValueError:
+                    pass
+    return node
+
+
+class _Node:
+    __slots__ = ("data", "children", "x", "y")
+
+    def __init__(self, data: dict):
+        self.data = data
+        self.children = [_Node(c) for c in data.get("children", [])]
+        self.x = 0.0
+        self.y = 0.0
+
+
+def _leaves(node: _Node) -> list[_Node]:
+    if not node.children:
+        return [node]
+    result = []
+    for c in node.children:
+        result.extend(_leaves(c))
+    return result
+
+
+def _all_nodes(node: _Node) -> list[_Node]:
+    result = [node]
+    for c in node.children:
+        result.extend(_all_nodes(c))
+    return result
+
+
+def _max_depth(node: _Node, d: int = 0) -> int:
+    if not node.children:
+        return d
+    return max(_max_depth(c, d + 1) for c in node.children)
+
+
+def _build_layout(root: _Node, inner_width: float, inner_height: float) -> None:
+    leaf_list = _leaves(root)
+    n = len(leaf_list)
+    step = inner_height / max(n - 1, 1) if n > 1 else 0.0
+    for i, leaf in enumerate(leaf_list):
+        leaf.x = i * step if n > 1 else inner_height / 2
+
+    def assign_internal_x(node: _Node) -> None:
+        for c in node.children:
+            assign_internal_x(c)
+        if node.children:
+            node.x = (node.children[0].x + node.children[-1].x) / 2
+
+    assign_internal_x(root)
+
+    depth = _max_depth(root)
+
+    def assign_y(node: _Node, d: int = 0) -> None:
+        if not node.children:
+            node.y = inner_width
+        else:
+            node.y = (d / depth * inner_width) if depth > 0 else 0.0
+            for c in node.children:
+                assign_y(c, d + 1)
+
+    assign_y(root)
+
+
+def _newick_to_svg(newick: str) -> str:
+    ROW_HEIGHT = 28
+    MARGIN_LEFT = 16
+    MARGIN_RIGHT = 200
+    MARGIN_TOP = 16
+    MARGIN_BOT = 16
+    SVG_WIDTH = 700
+    INNER_WIDTH = float(SVG_WIDTH - MARGIN_LEFT - MARGIN_RIGHT)
+
+    try:
+        data = _parse_newick(newick)
+    except Exception as e:
+        return f'<p style="color:red">Failed to parse tree: {e}</p>'
+
+    root = _Node(data)
+    leaf_list = _leaves(root)
+    n_leaves = len(leaf_list)
+    inner_height = float(max(n_leaves * ROW_HEIGHT, 80))
+    svg_height = inner_height + MARGIN_TOP + MARGIN_BOT
+
+    _build_layout(root, INNER_WIDTH, inner_height)
+
+    elements: list[str] = []
+
+    # Links (elbow style matching D3 output)
+    for node in _all_nodes(root):
+        for child in node.children:
+            elements.append(
+                f'<path d="M{node.y:.1f},{node.x:.1f}V{child.x:.1f}H{child.y:.1f}"'
+                f' fill="none" stroke="#495057" stroke-width="1.5"/>'
+            )
+
+    # Circles and labels
+    for node in _all_nodes(root):
+        elements.append(
+            f'<circle cx="{node.y:.1f}" cy="{node.x:.1f}" r="3" fill="#495057"/>'
+        )
+        name = node.data.get("name", "")
+        if not node.children and name:
+            # Leaf label
+            elements.append(
+                f'<text x="{node.y + 8:.1f}" y="{node.x:.1f}" dy="0.32em"'
+                f' font-size="12" fill="#212529" font-family="sans-serif">{name}</text>'
+            )
+        elif node.children and node is not root and name:
+            # Bootstrap / internal label
+            elements.append(
+                f'<text x="{node.y - 6:.1f}" y="{node.x:.1f}" dy="-0.4em"'
+                f' font-size="10" fill="#868e96" font-family="sans-serif"'
+                f' text-anchor="end">{name}</text>'
+            )
+
+    inner = "\n".join(elements)
+    return (
+        f'<svg width="{SVG_WIDTH}" height="{svg_height:.0f}" xmlns="http://www.w3.org/2000/svg">'
+        f'<g transform="translate({MARGIN_LEFT},{MARGIN_TOP})">{inner}</g>'
+        f'</svg>'
+    )
+
+
+# ---------------------------------------------------------------------------
+# D3 tree rendering JS (HTML export only)
+# ---------------------------------------------------------------------------
 
 _TREE_JS = r"""
 function parseNewick(s) {
@@ -176,7 +338,6 @@ function parseNewick(s) {
     var g = svg.append('g')
       .attr('transform', 'translate(' + marginLeft + ',' + marginTop + ')');
 
-    // Elbow links (classic phylogenetic style)
     g.selectAll('.tree-link')
       .data(root.links())
       .join('path')
@@ -197,7 +358,6 @@ function parseNewick(s) {
 
     node.append('circle').attr('r', 3);
 
-    // Leaf labels
     node.filter(function(d) { return !d.children; })
       .append('text')
         .attr('class', 'leaf-label')
@@ -205,7 +365,6 @@ function parseNewick(s) {
         .attr('dy', '0.32em')
         .text(function(d) { return d.data.name || ''; });
 
-    // Bootstrap values on internal non-root nodes
     node.filter(function(d) { return d.children && d.parent && d.data.name; })
       .append('text')
         .attr('class', 'bootstrap-label')
@@ -216,8 +375,44 @@ function parseNewick(s) {
 })();
 """
 
+# ---------------------------------------------------------------------------
+# HTML template
+# ---------------------------------------------------------------------------
 
-def render_html_report(job, results_path: Path) -> str:
+_CSS = """
+    *, *::before, *::after { box-sizing: border-box; }
+    body { font-family: sans-serif; margin: 0; padding: 2rem; background: #f8f9fa; color: #212529; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; margin: 2rem 0 0.75rem; border-bottom: 1px solid #dee2e6; padding-bottom: 0.4rem; }
+    h3 { font-size: 0.95rem; margin: 0 0 0.5rem; color: #495057; }
+    .meta { color: #6c757d; font-size: 0.85rem; margin-bottom: 2rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; background: #fff;
+            border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }
+    th { background: #f1f3f5; text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; }
+    td { padding: 0.5rem 0.75rem; border-top: 1px solid #e9ecef; vertical-align: top; }
+    small { color: #868e96; }
+    .badge { display: inline-block; padding: 0.15em 0.55em; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }
+    .badge-high { background: #d3f9d8; color: #1a7f37; }
+    .badge-mid  { background: #fff3cd; color: #856404; }
+    .badge-low  { background: #ffe3e3; color: #c92a2a; }
+    .badge-na   { background: #e9ecef; color: #495057; }
+    section { margin-bottom: 2rem; }
+    .tree-card { background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 1rem;
+                 margin-bottom: 1rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .tree-link { fill: none; stroke: #495057; stroke-width: 1.5px; }
+    .tree-node circle { fill: #495057; }
+    .leaf-label { font-size: 12px; fill: #212529; font-family: sans-serif; }
+    .bootstrap-label { font-size: 10px; fill: #868e96; font-family: sans-serif; text-anchor: end; }
+    .note { font-size: 0.8rem; color: #6c757d; margin: 0 0 0.75rem; }
+    details { margin-top: 0.75rem; }
+    summary { font-size: 0.8rem; color: #6c757d; cursor: pointer; }
+    pre.nwk { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;
+              padding: 0.5rem 0.75rem; font-size: 0.75rem; overflow-x: auto;
+              white-space: pre-wrap; word-break: break-all; margin: 0.5rem 0 0; }
+"""
+
+
+def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
     pipeline_status = job.pipeline_status
     tool_statuses = pipeline_status.model_dump() if pipeline_status else {}
 
@@ -244,12 +439,20 @@ def render_html_report(job, results_path: Path) -> str:
     timing_html = _render_timing(job.tools_timing)
 
     trees = _collect_nwk_trees(results_path)
-    trees_json = json.dumps(trees)
 
+    # Tree section: inline SVG for PDF, D3 containers for HTML
     tree_sections = ""
     if trees:
         for t in trees:
-            tree_sections += f"""
+            if pdf_mode:
+                tree_viz = _newick_to_svg(t["newick"])
+                tree_sections += f"""
+    <div class="tree-card">
+      <h3>{t["tool"]}</h3>
+      {tree_viz}
+    </div>"""
+            else:
+                tree_sections += f"""
     <div class="tree-card">
       <h3>{t["tool"]}</h3>
       <div id="tree-{t["tool"]}"></div>
@@ -261,41 +464,33 @@ def render_html_report(job, results_path: Path) -> str:
     else:
         tree_sections = "<p>No Newick files found.</p>"
 
+    d3_head = '<script src="https://d3js.org/d3.v7.min.js"></script>' if not pdf_mode else ""
+    trees_json = json.dumps(trees)
+    d3_script = f"""
+  <script>
+    const TREES = {trees_json};
+    {_TREE_JS}
+  </script>""" if not pdf_mode else ""
+
+    config_section = f"""
+  <section>
+    <h2>Pipeline configuration</h2>
+    <table>
+      <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+      <tbody>{config_rows}</tbody>
+    </table>
+  </section>""" if config_rows else ""
+
+    error_row = f'<tr><td><strong>Error</strong></td><td><code>{job.error}</code></td></tr>' if job.error else ""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Job Report — {job.id}</title>
-  <script src="https://d3js.org/d3.v7.min.js"></script>
-  <style>
-    *, *::before, *::after {{ box-sizing: border-box; }}
-    body {{ font-family: system-ui, sans-serif; margin: 0; padding: 2rem; background: #f8f9fa; color: #212529; }}
-    h1 {{ font-size: 1.5rem; margin-bottom: 0.25rem; }}
-    h2 {{ font-size: 1.1rem; margin: 2rem 0 0.75rem; border-bottom: 1px solid #dee2e6; padding-bottom: 0.4rem; }}
-    h3 {{ font-size: 0.95rem; margin: 0 0 0.5rem; color: #495057; }}
-    .meta {{ color: #6c757d; font-size: 0.85rem; margin-bottom: 2rem; }}
-    table {{ width: 100%; border-collapse: collapse; font-size: 0.875rem; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); margin-bottom: 1rem; }}
-    th {{ background: #f1f3f5; text-align: left; padding: 0.5rem 0.75rem; font-weight: 600; }}
-    td {{ padding: 0.5rem 0.75rem; border-top: 1px solid #e9ecef; vertical-align: top; }}
-    small {{ color: #868e96; }}
-    .badge {{ display: inline-block; padding: 0.15em 0.55em; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }}
-    .badge-high {{ background: #d3f9d8; color: #1a7f37; }}
-    .badge-mid  {{ background: #fff3cd; color: #856404; }}
-    .badge-low  {{ background: #ffe3e3; color: #c92a2a; }}
-    .badge-na   {{ background: #e9ecef; color: #495057; }}
-    section {{ margin-bottom: 2rem; }}
-    /* Tree */
-    .tree-card {{ background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 1rem; margin-bottom: 1rem; overflow-x: auto; box-shadow: 0 1px 3px rgba(0,0,0,.08); }}
-    .tree-link {{ fill: none; stroke: #495057; stroke-width: 1.5px; }}
-    .tree-node circle {{ fill: #495057; }}
-    .leaf-label {{ font-size: 12px; fill: #212529; font-family: system-ui, sans-serif; }}
-    .bootstrap-label {{ font-size: 10px; fill: #868e96; font-family: system-ui, sans-serif; text-anchor: end; }}
-    .note {{ font-size: 0.8rem; color: #6c757d; margin: 0 0 0.75rem; }}
-    details {{ margin-top: 0.75rem; }}
-    summary {{ font-size: 0.8rem; color: #6c757d; cursor: pointer; }}
-    pre.nwk {{ background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 0.5rem 0.75rem; font-size: 0.75rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 0.5rem 0 0; }}
-  </style>
+  {d3_head}
+  <style>{_CSS}</style>
 </head>
 <body>
   <h1>Phylogenetic Analysis Report</h1>
@@ -310,7 +505,7 @@ def render_html_report(job, results_path: Path) -> str:
         <tr><td><strong>Started</strong></td><td>{_fmt_dt(job.started_at)}</td></tr>
         <tr><td><strong>Completed</strong></td><td>{_fmt_dt(job.completed_at)}</td></tr>
         <tr><td><strong>Total duration</strong></td><td>{_duration(job.started_at, job.completed_at)}</td></tr>
-        {f'<tr><td><strong>Error</strong></td><td><code>{job.error}</code></td></tr>' if job.error else ''}
+        {error_row}
       </tbody>
     </table>
   </section>
@@ -323,13 +518,7 @@ def render_html_report(job, results_path: Path) -> str:
     </table>
   </section>
 
-  {f'''<section>
-    <h2>Pipeline configuration</h2>
-    <table>
-      <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
-      <tbody>{config_rows}</tbody>
-    </table>
-  </section>''' if config_rows else ''}
+  {config_section}
 
   <section>
     <h2>Tool timing</h2>
@@ -345,14 +534,14 @@ def render_html_report(job, results_path: Path) -> str:
     <h2>Phylogenetic trees</h2>
     {tree_sections}
   </section>
-
-  <script>
-    const TREES = {trees_json};
-    {_TREE_JS}
-  </script>
+  {d3_script}
 </body>
 </html>"""
 
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 @router.get("/{job_id}/export/html", response_class=HTMLResponse)
 async def export_html(job_id: str):
@@ -364,6 +553,25 @@ async def export_html(job_id: str):
     if not results_path.exists():
         raise HTTPException(status_code=404, detail="Results not found")
 
-    html = render_html_report(job, results_path)
+    html = render_html_report(job, results_path, pdf_mode=False)
     headers = {"Content-Disposition": f'attachment; filename="report_{job_id}.html"'}
     return HTMLResponse(content=html, headers=headers)
+
+
+@router.get("/{job_id}/export/pdf")
+async def export_pdf(job_id: str):
+    job = await job_storage.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    results_path = Path(os.environ["STATIC_PATH"], job_id)
+    if not results_path.exists():
+        raise HTTPException(status_code=404, detail="Results not found")
+
+    from weasyprint import HTML
+
+    html = render_html_report(job, results_path, pdf_mode=True)
+    pdf_bytes = HTML(string=html).write_pdf()
+
+    headers = {"Content-Disposition": f'attachment; filename="report_{job_id}.pdf"'}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

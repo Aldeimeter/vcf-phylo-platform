@@ -14,6 +14,13 @@
   # Final stage
   FROM python:3.13-alpine
 
+  # System deps required by WeasyPrint (Cairo, Pango, fonts)
+  RUN apk add --no-cache \
+      pango \
+      cairo \
+      fontconfig \
+      ttf-freefont
+
   # Copy virtual environment from builder
   COPY --from=builder /opt/venv /opt/venv
 
