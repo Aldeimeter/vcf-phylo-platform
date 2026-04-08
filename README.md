@@ -1,6 +1,6 @@
 # Phylogenetic Analysis Pipeline
 
-A Docker-based pipeline for phylogenetic analysis of VCF files. The system orchestrates multiple bioinformatics tools (VCF Merger, IQ-TREE, FastReer, MrBayes) through a REST API with a web frontend for visualization.
+A Docker-based pipeline for phylogenetic analysis of VCF files. It runs multiple bioinformatics tools (VCF Merger, IQ-TREE, FastReer, MrBayes) in parallel, compares the resulting trees, and presents everything through a web UI.
 
 ## Architecture
 
@@ -10,9 +10,11 @@ Client → FastAPI → Orchestrator Container
            Local Registry → Tool Containers → Results
 ```
 
-- **server/** — FastAPI backend, manages jobs and datasets
-- **orchestrator/** — Pipeline orchestrator, runs analysis stages
-- **web/** — Frontend UI for submitting jobs and viewing results
+The **orchestrator** is a short-lived container spawned per job. It pulls tool images from a local Docker registry, runs the pipeline stages, and writes results to a shared volume. The **FastAPI** backend manages jobs and exposes results; the **web** frontend polls it for status and displays results.
+
+- **server/** — FastAPI backend: job management, dataset discovery, result serving
+- **orchestrator/** — pipeline runner: merger → inference tools → comparison
+- **web/** — Python Shiny frontend: job submission, status polling, result visualization
 
 ## Prerequisites
 
@@ -24,12 +26,12 @@ Client → FastAPI → Orchestrator Container
 
 ```bash
 git clone <repo-url>
-cd project
+cd <repo-name>
 ```
 
 **2. (Optional) Configure ports**
 
-All host-side ports can be overridden via a `.env` file:
+All host-side ports can be overridden via a `.env` file in the project root:
 
 | Variable        | Default | Service         |
 | --------------- | ------- | --------------- |
@@ -44,15 +46,23 @@ echo "REGISTRY_PORT=5001" >> .env
 echo "FRONTEND_PORT=9080" >> .env
 ```
 
-**3. Run the startup script**
+**3. Add datasets**
+
+Create the datasets directory if it does not exist, then add at least one dataset:
+
+```bash
+mkdir -p server/data/datasets
+```
+
+See the [Datasets](#datasets) section for the required structure.
+
+**4. Run the startup script**
 
 This builds all tool images, pushes them to the local registry, and starts all services:
 
 ```bash
 ./startup.sh
 ```
-
-## Running
 
 Once startup completes, the following services are available:
 
@@ -67,28 +77,37 @@ If you overrode any ports in `.env`, replace the default port accordingly.
 
 ## Datasets
 
-Datasets are discovered automatically from the `server/data/datasets/` directory. A folder is recognised as a valid dataset only if it contains at least one `.vcf` or `.vcf.gz` file.
+Datasets are read from the `server/data/datasets/` directory. Each subfolder is one dataset. The pipeline requires **at least 3 VCF files** per dataset — one per sample — to produce meaningful phylogenetic trees.
 
 **Adding a dataset:**
 
 1. Create a folder named after your dataset inside `server/data/datasets/`:
    ```
-   server/data/datasets/<dataset_id>/
+   server/data/datasets/<dataset_name>/
    ```
-2. Place one or more `.vcf` / `.vcf.gz` files inside that folder:
+2. Place **at least 3** `.vcf` files inside it (one per sample):
    ```
    server/data/datasets/my_cohort/sample1.vcf
-   server/data/datasets/my_cohort/sample2.vcf.gz
+   server/data/datasets/my_cohort/sample2.vcf
+   server/data/datasets/my_cohort/sample3.vcf
    ```
-3. The dataset will appear automatically in the frontend and API — no restart needed.
+3. The dataset appears in the frontend and API automatically — no restart needed.
 
-> Folders without any VCF files are ignored.
+Example directory structure:
+
+![Dataset directory structure](docs/datasets-example.png)
+
+> Folders with fewer than 3 VCF files are shown in the frontend with a warning and cannot be submitted for analysis. Folders with no VCF files are ignored entirely.
 
 ## Usage
 
-Submit an analysis job via the frontend (default: `http://localhost:8080`).
+1. Open the frontend at `http://localhost:8080` (or your `FRONTEND_PORT`).
+2. On the **Analysis** page, select a dataset and click **Start Analysis**.
+3. You are redirected to the job detail page, which shows live pipeline status and logs.
+4. Once the job completes, results are displayed on the same page — per-tool phylogenetic trees and a side-by-side comparison of topology and branch length similarity.
+5. Use the **Export HTML** or **Export PDF** buttons to download a full report.
 
-Results are written to `server/data/results/<job_id>/` and can be viewed at `http://localhost:8080/?page=job&job_id=<job_id>` (replace `8080` with your `FRONTEND_PORT` if overridden).
+Results are also written to `server/data/results/<job_id>/` on disk.
 
 ## Management
 
