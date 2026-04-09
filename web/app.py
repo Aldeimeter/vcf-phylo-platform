@@ -42,11 +42,12 @@ def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: 
 
         response = requests.post(f"{BACKEND_URL}/jobs/create", json=payload)
         if response.status_code == 200:
-            return response.json()["job_id"]
-        return None
+            return response.json()["job_id"], None
+        detail = response.json().get("detail", f"Server error ({response.status_code})")
+        return None, detail
     except Exception as e:
         print(f"Job creation failed: {e}")
-        return None
+        return None, "Failed to connect to backend."
 
 
 def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
@@ -1018,7 +1019,7 @@ def server(input, output, session):
         mrbayes_seed = read_seed(input.mrbayes_seed)
         mrbayes_swapseed = read_seed(input.mrbayes_swapseed)
 
-        job_id = start_job(dataset, iqtree_seed=iqtree_seed, mrbayes_seed=mrbayes_seed, mrbayes_swapseed=mrbayes_swapseed)
+        job_id, error = start_job(dataset, iqtree_seed=iqtree_seed, mrbayes_seed=mrbayes_seed, mrbayes_swapseed=mrbayes_swapseed)
         if job_id:
             # Redirect to job details page using JavaScript
             from shiny import ui
@@ -1029,7 +1030,7 @@ def server(input, output, session):
                 where="beforeEnd",
             )
         else:
-            error_message.set("Failed to start analysis. Please try again.")
+            error_message.set(error)
 
     # Handle jobs filtering
     @reactive.effect

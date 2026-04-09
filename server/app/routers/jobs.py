@@ -21,6 +21,14 @@ class CreateRequestBody(BaseModel):
 
 @router.post("/create")
 async def create_job(request_body: CreateRequestBody):
+    try:
+        client.images.get("orchestrator:latest")
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Orchestrator image not found. Run ./startup.sh to build required images."
+        )
+
     job = await job_storage.create_job(request_body.dataset_id, pipeline_config=request_body.config)
     await job_storage.update_job(
         job.id, status=JobStatus.RUNNING, started_at=datetime.now()
