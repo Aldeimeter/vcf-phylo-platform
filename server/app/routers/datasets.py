@@ -14,7 +14,7 @@ def get_datasets():
         raise HTTPException(status_code=500, detail=f"Datasets directory not found: {DATASETS_PATH}")
 
     def vcf_count(folder):
-        return sum(1 for f in os.listdir(folder) if f.endswith(".vcf"))
+        return sum(1 for f in os.listdir(folder) if f.endswith(".vcf") or f.endswith(".vcf.gz"))
 
     result = []
     for e in entries:

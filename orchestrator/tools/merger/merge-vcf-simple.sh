@@ -9,11 +9,20 @@ cd /workspace
 echo "Step 1: Compressing and indexing VCF files..."
 
 for vcf in /data/*.vcf; do
-  if [ -f "$vcf" ]; then 
+  if [ -f "$vcf" ]; then
     filename=$(basename "$vcf")
     echo " Processing $filename..."
     bgzip -c "$vcf" > "${filename}.gz"
     bcftools index "${filename}.gz"
+  fi
+done
+
+for vcfgz in /data/*.vcf.gz; do
+  if [ -f "$vcfgz" ]; then
+    filename=$(basename "$vcfgz")
+    echo " Processing $filename (already compressed)..."
+    cp "$vcfgz" "${filename}"
+    bcftools index "${filename}"
   fi
 done
 
