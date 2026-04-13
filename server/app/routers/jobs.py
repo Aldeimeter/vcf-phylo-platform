@@ -81,7 +81,7 @@ class StatusUpdateBody(BaseModel):
 async def update_job_status(job_id: str, update: StatusUpdateBody):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
     updates = update.model_dump(exclude_unset=True)
 
@@ -99,7 +99,7 @@ async def update_job_status(job_id: str, update: StatusUpdateBody):
 async def get_job_status(job_id: str):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
     return job
 
@@ -108,10 +108,10 @@ async def get_job_status(job_id: str):
 async def get_job_results(job_id: str):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
     results_path = Path(os.environ["STATIC_PATH"], job_id)
-    if not results_path:
-        raise HTTPException(status_code=404, detail="Results directory not found")
+    if not results_path.exists():
+        raise HTTPException(status_code=404, detail=f"Results for job '{job_id}' not found — the job may still be running or may have failed")
 
     nwk_files = []
     results_json = None
@@ -162,7 +162,7 @@ class SaveJobConfigRequest(BaseModel):
 async def save_job_config(request_body: SaveJobConfigRequest, job_id: str):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
     await job_storage.update_job(job.id, pipeline_config=request_body.pipeline_config)
     return {"success": True}
@@ -176,7 +176,7 @@ class CreateJobTimingRequest(BaseModel):
 async def create_job_timing(request_body: CreateJobTimingRequest, job_id: str):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
     await job_storage.update_job(job.id, tools_timing=request_body.tools_timing)
 

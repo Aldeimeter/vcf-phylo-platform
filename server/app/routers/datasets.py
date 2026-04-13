@@ -18,7 +18,6 @@ _upload_status: dict = {}  # name -> {"status": "processing"|"ready"|"failed", "
 
 @router.get("/")
 def get_datasets():
-    datasets_path = os.environ.get("DATASETS_PATH", DATASETS_PATH)
     try:
         entries = os.listdir(DATASETS_PATH)
     except FileNotFoundError:
@@ -64,6 +63,14 @@ def get_upload_status(name: str):
     return _upload_status[name]
 
 
+def _docker_error_message(e: Exception) -> str:
+    if hasattr(e, "explanation") and e.explanation:
+        return e.explanation.decode() if isinstance(e.explanation, bytes) else str(e.explanation)
+    if hasattr(e, "stderr") and e.stderr:
+        return e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr)
+    return str(e)
+
+
 def _run_compressor(name: str, dataset_path_host: str):
     try:
         client.containers.run(
@@ -76,7 +83,7 @@ def _run_compressor(name: str, dataset_path_host: str):
         _upload_status[name] = {"status": "ready", "error": ""}
     except Exception as e:
         shutil.rmtree(os.path.join(DATASETS_PATH, name), ignore_errors=True)
-        _upload_status[name] = {"status": "failed", "error": str(e)}
+        _upload_status[name] = {"status": "failed", "error": f"Compression failed: {_docker_error_message(e)}"}
 
 
 @router.post("/{name}/upload", status_code=202)

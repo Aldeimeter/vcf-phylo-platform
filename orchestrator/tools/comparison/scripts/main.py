@@ -27,7 +27,7 @@ def load_trees():
                 trees[name] = tree
                 print(f"Loaded {name} tree from {path}")
             except Exception as e:
-                print(f"Error loading {name} tree: {e}")
+                print(f"Failed to load {name} tree from {path}: {e} — skipping this tool in comparison")
 
     return trees
 
@@ -137,14 +137,14 @@ def compare_trees(trees):
                 topo = topology_similarity(t1, t2)
             except Exception as e:
                 print(f"Topology comparison error ({key}): {e}")
-                topo = {"error": str(e)}
+                topo = {"error": f"Topology comparison failed for {key}: {e}"}
 
             lengths = None
             try:
                 lengths = branch_length_similarity(t1, t2)
             except Exception as e:
                 print(f"Branch length comparison error ({key}): {e}")
-                lengths = {"error": str(e)}
+                lengths = {"error": f"Branch length comparison failed for {key}: {e}"}
 
             results[key] = {
                 "topology": topo,

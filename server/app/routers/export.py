@@ -547,11 +547,11 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
 async def export_html(job_id: str):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
     results_path = Path(os.environ["STATIC_PATH"], job_id)
     if not results_path.exists():
-        raise HTTPException(status_code=404, detail="Results not found")
+        raise HTTPException(status_code=404, detail=f"Results for job '{job_id}' not found — the job may still be running or may have failed")
 
     html = render_html_report(job, results_path, pdf_mode=False)
     headers = {"Content-Disposition": f'attachment; filename="report_{job_id}.html"'}
@@ -562,11 +562,11 @@ async def export_html(job_id: str):
 async def export_pdf(job_id: str):
     job = await job_storage.get_job(job_id)
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
     results_path = Path(os.environ["STATIC_PATH"], job_id)
     if not results_path.exists():
-        raise HTTPException(status_code=404, detail="Results not found")
+        raise HTTPException(status_code=404, detail=f"Results for job '{job_id}' not found — the job may still be running or may have failed")
 
     from weasyprint import HTML
 

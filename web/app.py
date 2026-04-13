@@ -31,9 +31,14 @@ def validate_dataset_name(name: str) -> Optional[str]:
         response = requests.post(f"{BACKEND_URL}/datasets/{name}/validate-name")
         if response.status_code == 200:
             return None
-        return response.json().get("detail", "Invalid dataset name")
+        try:
+            return response.json().get("detail", f"Name validation failed (HTTP {response.status_code})")
+        except Exception:
+            return f"Name validation failed (HTTP {response.status_code})"
+    except requests.ConnectionError:
+        return "Cannot reach the server — is it running?"
     except Exception as e:
-        return str(e)
+        return f"Name validation error: {e}"
 
 
 def upload_dataset(name: str, file_infos) -> tuple:
@@ -43,9 +48,15 @@ def upload_dataset(name: str, file_infos) -> tuple:
         response = requests.post(f"{BACKEND_URL}/datasets/{name}/upload", files=files)
         if response.status_code == 202:
             return True, ""
-        return False, response.json().get("detail", "Upload failed")
+        try:
+            detail = response.json().get("detail", f"Upload failed (HTTP {response.status_code})")
+        except Exception:
+            detail = f"Upload failed (HTTP {response.status_code})"
+        return False, detail
+    except requests.ConnectionError:
+        return False, "Cannot reach the server — is it running?"
     except Exception as e:
-        return False, str(e)
+        return False, f"Upload error: {e}"
 
 
 def get_dataset_upload_status(name: str) -> dict:
@@ -53,9 +64,15 @@ def get_dataset_upload_status(name: str) -> dict:
         response = requests.get(f"{BACKEND_URL}/datasets/{name}/status")
         if response.status_code == 200:
             return response.json()
-        return {"status": "failed", "error": "Status check failed"}
+        try:
+            detail = response.json().get("detail", f"Status check failed (HTTP {response.status_code})")
+        except Exception:
+            detail = f"Status check failed (HTTP {response.status_code})"
+        return {"status": "failed", "error": detail}
+    except requests.ConnectionError:
+        return {"status": "failed", "error": "Cannot reach the server — is it running?"}
     except Exception as e:
-        return {"status": "failed", "error": str(e)}
+        return {"status": "failed", "error": f"Status check error: {e}"}
 
 
 def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: Optional[int] = None, mrbayes_swapseed: Optional[int] = None) -> Optional[str]:
@@ -76,11 +93,15 @@ def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: 
         response = requests.post(f"{BACKEND_URL}/jobs/create", json=payload)
         if response.status_code == 200:
             return response.json()["job_id"], None
-        detail = response.json().get("detail", f"Server error ({response.status_code})")
+        try:
+            detail = response.json().get("detail", f"Job creation failed (HTTP {response.status_code})")
+        except Exception:
+            detail = f"Job creation failed (HTTP {response.status_code})"
         return None, detail
+    except requests.ConnectionError:
+        return None, "Cannot reach the server — is it running?"
     except Exception as e:
-        print(f"Job creation failed: {e}")
-        return None, "Failed to connect to backend."
+        return None, f"Job creation error: {e}"
 
 
 def get_job_status(job_id: str) -> Optional[Dict[str, Any]]:
@@ -230,7 +251,7 @@ def get_current_pipeline_stage(pipeline_status: Dict[str, str]) -> str:
         if pipeline_status.get(tool) == "pending":
             return f"Waiting for: {tool_names[tool]}"
 
-    return "Pipeline Status Unknown"
+    return "Pipeline status unavailable — no stage reported yet"
 
 
 # UI Definition with Query Parameter Routing
@@ -486,7 +507,7 @@ def server(input, output, session):
             datasets_list.set(get_datasets())
             ui.update_text("upload_dataset_name", value="")
         elif status == "failed":
-            upload_error.set(status_data.get("error", "Upload failed."))
+            upload_error.set(status_data.get("error") or "Compression failed with an unknown error.")
             upload_message.set("")
             uploading_dataset.set(None)
 
@@ -1126,8 +1147,10 @@ def server(input, output, session):
                 uploading_dataset.set(name)
             else:
                 upload_error.set(error)
-        except:
-            pass  # Input might not exist on other pages
+        except KeyError:
+            pass  # Input doesn't exist on this page
+        except Exception as e:
+            upload_error.set(f"Unexpected error: {e}")
 
     # Handle dataset selection
     @reactive.effect
@@ -1198,7 +1221,7 @@ def server(input, output, session):
                 sort_order=sort_order,
             )
             jobs_list.set(filtered_jobs)
-        except:
+        except KeyError:
             pass  # Inputs might not exist on other pages
 
     # Render logs output
