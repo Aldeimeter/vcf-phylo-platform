@@ -25,6 +25,39 @@ def get_datasets():
         return []
 
 
+def validate_dataset_name(name: str) -> Optional[str]:
+    """Returns None if valid, error message otherwise"""
+    try:
+        response = requests.post(f"{BACKEND_URL}/datasets/{name}/validate-name")
+        if response.status_code == 200:
+            return None
+        return response.json().get("detail", "Invalid dataset name")
+    except Exception as e:
+        return str(e)
+
+
+def upload_dataset(name: str, file_infos) -> tuple:
+    """Upload VCF files to create a new dataset. Returns (success, error_message)."""
+    try:
+        files = [("files", (f["name"], open(f["datapath"], "rb"))) for f in file_infos]
+        response = requests.post(f"{BACKEND_URL}/datasets/{name}/upload", files=files)
+        if response.status_code == 202:
+            return True, ""
+        return False, response.json().get("detail", "Upload failed")
+    except Exception as e:
+        return False, str(e)
+
+
+def get_dataset_upload_status(name: str) -> dict:
+    try:
+        response = requests.get(f"{BACKEND_URL}/datasets/{name}/status")
+        if response.status_code == 200:
+            return response.json()
+        return {"status": "failed", "error": "Status check failed"}
+    except Exception as e:
+        return {"status": "failed", "error": str(e)}
+
+
 def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: Optional[int] = None, mrbayes_swapseed: Optional[int] = None) -> Optional[str]:
     """Start a new analysis job"""
     try:
@@ -432,6 +465,39 @@ def server(input, output, session):
     # Logs data
     current_logs = reactive.value("")
     logs_last_seen_timestamp = reactive.value(0)
+    # Upload state
+    upload_message = reactive.value("")
+    upload_error = reactive.value("")
+    uploading_dataset = reactive.value(None)  # name of dataset being compressed, or None
+
+    # Upload status polling
+    @reactive.effect
+    def poll_upload_status():
+        name = uploading_dataset.get()
+        if not name:
+            return
+        reactive.invalidate_later(POLL_INTERVAL)
+        status_data = get_dataset_upload_status(name)
+        status = status_data.get("status")
+        if status == "ready":
+            upload_message.set(f"Dataset '{name}' uploaded successfully.")
+            upload_error.set("")
+            uploading_dataset.set(None)
+            datasets_list.set(get_datasets())
+            ui.update_text("upload_dataset_name", value="")
+        elif status == "failed":
+            upload_error.set(status_data.get("error", "Upload failed."))
+            upload_message.set("")
+            uploading_dataset.set(None)
+
+    @render.ui
+    def upload_btn_output():
+        try:
+            files_ready = bool(input.upload_files())
+        except Exception:
+            files_ready = False
+        disabled = not files_ready or uploading_dataset.get() is not None
+        return ui.input_action_button("upload_btn", "Upload", class_="btn btn-primary mt-1", disabled=disabled)
 
     # Load initial data
     @reactive.effect
@@ -557,8 +623,58 @@ def server(input, output, session):
     def render_analysis_page():
         datasets = datasets_list.get()
         error = error_message.get()
+        u_msg = upload_message.get()
+        u_err = upload_error.get()
+        uploading_ds = uploading_dataset.get()
 
         error_ui = ui.div(error, class_="error-message") if error else None
+
+        upload_feedback = None
+        if uploading_ds:
+            upload_feedback = ui.div(
+                ui.tags.span(class_="spinner-border spinner-border-sm me-2"),
+                f"Compressing files for '{uploading_ds}'...",
+                class_="alert alert-info mt-2",
+            )
+        elif u_err:
+            upload_feedback = ui.div(u_err, class_="alert alert-danger mt-2")
+        elif u_msg:
+            upload_feedback = ui.div(u_msg, class_="alert alert-success mt-2")
+
+        collapse_class = "collapse show" if u_err else "collapse"
+
+        upload_section = ui.div(
+            ui.tags.button(
+                "Upload New Dataset",
+                **{"data-bs-toggle": "collapse", "data-bs-target": "#upload-collapse"},
+                class_="btn btn-outline-secondary mb-2",
+                type="button",
+            ),
+            upload_feedback,
+            ui.div(
+                ui.input_text("upload_dataset_name", "Dataset Name", placeholder="e.g. my-samples-2024"),
+                ui.p(
+                    "Only letters, numbers, hyphens, and underscores.",
+                    class_="text-muted mb-2",
+                    style="font-size: 0.85em;",
+                ),
+                ui.input_file(
+                    "upload_files",
+                    "VCF Files",
+                    multiple=True,
+                    accept=[".vcf", ".vcf.gz"],
+                ),
+                ui.p(
+                    "Plain .vcf files will be automatically compressed to .vcf.gz on upload.",
+                    class_="text-muted mb-2",
+                    style="font-size: 0.85em;",
+                ),
+                ui.output_ui("upload_btn_output"),
+                id="upload-collapse",
+                class_=collapse_class,
+                style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin-bottom: 16px;",
+            ),
+        )
 
         if datasets is None:
             datasets_content = ui.p("Loading datasets...", class_="text-muted")
@@ -663,6 +779,7 @@ def server(input, output, session):
             ui.h2("Start New Analysis"),
             error_ui,
             pipeline_info,
+            upload_section,
             ui.p("Choose a dataset to start phylogenetic analysis:"),
             datasets_content,
             seeds_ui,
@@ -979,6 +1096,38 @@ def server(input, output, session):
                         )
 
         return ui.div(*content)
+
+    # Handle dataset upload
+    @reactive.effect
+    @reactive.event(input.upload_btn)
+    def handle_upload():
+        try:
+            name = input.upload_dataset_name().strip()
+            files = input.upload_files()
+
+            upload_message.set("")
+            upload_error.set("")
+
+            if not name:
+                upload_error.set("Please enter a dataset name.")
+                return
+            if not files:
+                upload_error.set("Please select at least one VCF file.")
+                return
+
+            err = validate_dataset_name(name)
+            if err:
+                upload_error.set(err)
+                return
+
+            success, error = upload_dataset(name, files)
+            if success:
+                upload_message.set("")
+                uploading_dataset.set(name)
+            else:
+                upload_error.set(error)
+        except:
+            pass  # Input might not exist on other pages
 
     # Handle dataset selection
     @reactive.effect

@@ -60,6 +60,10 @@ step 3 "Building orchestrator image"
 docker build -t orchestrator ./orchestrator || error "Failed to build orchestrator"
 success "Orchestrator image built"
 
+step 3b "Building vcf-compressor image"
+docker build -t vcf-compressor ./server/tools/vcf-compressor || error "Failed to build vcf-compressor"
+success "vcf-compressor image built"
+
 step 4 "Restarting all services with latest code"
 docker-compose down  # Stop existing services
 docker-compose up -d --build  # Rebuild and start
