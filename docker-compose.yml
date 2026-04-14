@@ -68,9 +68,28 @@ services:
       - loki_data:/loki
     command: -config.file=/etc/loki/local-config.yaml
 
+  grafana:
+    image: grafana/grafana:10.4.0
+    profiles: [grafana]
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - phylo-net
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/etc/grafana/provisioning/dashboards/phylo-logs.json
+    depends_on:
+      - loki
+
 volumes:
   mongodb_data:
   loki_data:
+  grafana_data:
 networks:
   phylo-net:
     driver: bridge

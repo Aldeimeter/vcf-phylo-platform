@@ -9,5 +9,6 @@ dependencies = [
     "docker>=7.1.0",
     "fastapi[standard]>=0.128.6",
     "motor>=3.7.1",
+    "python-logging-loki>=0.3.1",
     "weasyprint>=68.1",
 ]

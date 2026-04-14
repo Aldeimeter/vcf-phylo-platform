@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.services.docker import client
 from app.models.job import JobStatus, PipelineStatus, ToolsTiming, PipelineConfig
 from app.services.job_storage import job_storage
+from app.logger import logger
 from pathlib import Path
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -29,11 +30,13 @@ async def create_job(request_body: CreateRequestBody):
             detail="Orchestrator image not found. Run ./startup.sh to build required images."
         )
 
+    logger.info(f"Creating job for dataset '{request_body.dataset_id}'")
     job = await job_storage.create_job(request_body.dataset_id, pipeline_config=request_body.config)
     await job_storage.update_job(
         job.id, status=JobStatus.RUNNING, started_at=datetime.now()
     )
     job_id = str(job.id)
+    logger.info(f"Job created: {job_id} for dataset '{request_body.dataset_id}'")
     dataset_path = str(Path(os.environ["DATASETS_PATH"], request_body.dataset_id))
     results_path = str(Path(os.environ["RESULTS_PATH"], job_id))
 
@@ -54,6 +57,7 @@ async def create_job(request_body: CreateRequestBody):
         if cfg.mrbayes_swapseed is not None:
             orchestrator_env["MRBAYES_SWAPSEED"] = str(cfg.mrbayes_swapseed)
 
+    logger.debug(f"Spawning orchestrator container for job {job_id}")
     client.containers.run(
         image="orchestrator:latest",
         command=["python", "/app/main.py", job_id],
@@ -68,6 +72,7 @@ async def create_job(request_body: CreateRequestBody):
         privileged=True,
         detach=True,
     )
+    logger.info(f"Orchestrator container started for job {job_id}")
     return {"job_id": job_id}
 
 
@@ -91,6 +96,7 @@ async def update_job_status(job_id: str, update: StatusUpdateBody):
         elif updates["status"] in [JobStatus.COMPLETED, JobStatus.FAILED]:
             updates["completed_at"] = datetime.now()
 
+    logger.info(f"Job {job_id} status update: {updates}")
     await job_storage.update_job(job_id, **updates)
     return {"success": True}
 

@@ -5,13 +5,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from .routers import datasets, jobs, logs, export
 from .database import database
+from .logger import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("FastAPI server starting up")
     await database.connect()
+    logger.info("Connected to MongoDB")
     yield
     await database.disconnect()
+    logger.info("FastAPI server shutting down")
 
 
 app = FastAPI(lifespan=lifespan)

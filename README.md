@@ -38,6 +38,7 @@ All host-side ports can be overridden via a `.env` file in the project root:
 | `FRONTEND_PORT` | `8080`  | Web frontend    |
 | `FASTAPI_PORT`  | `8000`  | FastAPI backend |
 | `REGISTRY_PORT` | `5000`  | Docker registry |
+| `GRAFANA_PORT`  | `3000`  | Grafana (optional) |
 
 Example — override ports that conflict on your machine:
 
@@ -64,14 +65,21 @@ This builds all tool images, pushes them to the local registry, and starts all s
 ./startup.sh
 ```
 
+To also start the optional Grafana log dashboard, pass `--grafana`:
+
+```bash
+./startup.sh --grafana
+```
+
 Once startup completes, the following services are available:
 
-| Service  | Default URL                |
-| -------- | -------------------------- |
-| Frontend | http://localhost:8080      |
-| FastAPI  | http://localhost:8000      |
-| API docs | http://localhost:8000/docs |
-| Registry | http://localhost:5000      |
+| Service         | Default URL                |
+| --------------- | -------------------------- |
+| Frontend        | http://localhost:8080      |
+| FastAPI         | http://localhost:8000      |
+| API docs        | http://localhost:8000/docs |
+| Registry        | http://localhost:5000      |
+| Grafana (opt.)  | http://localhost:3000      |
 
 If you overrode any ports in `.env`, replace the default port accordingly.
 
@@ -109,6 +117,14 @@ Example directory structure:
 
 Results are also written to `server/data/results/<job_id>/` on disk.
 
+## Grafana Log Dashboard
+
+Grafana is an optional service that provides a browser-based UI for browsing logs from all pipeline components (FastAPI, orchestrator, and each tool).
+
+Start it with `./startup.sh --grafana`, then open `http://localhost:3000` (or your `GRAFANA_PORT`). The **Phylogenetic Pipeline Logs** dashboard opens automatically. Use the **Service** dropdown to filter by component, or paste a **Job ID** to see logs for a specific run.
+
+Logs are stored in Loki and are available for up to 1 hour after a job completes.
+
 ## Management
 
 ```bash
@@ -122,6 +138,9 @@ docker-compose down
 # Stop all services
 docker-compose down
 
-# View logs
+# View logs (terminal)
 docker-compose logs -f fastapi
+
+# View logs (browser, optional)
+./startup.sh --grafana
 ```
