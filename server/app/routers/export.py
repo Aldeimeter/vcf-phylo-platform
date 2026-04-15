@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, Response
 
 from app.services.job_storage import job_storage
+from app.logger import logger
 
 router = APIRouter(prefix="/jobs", tags=["export"])
 
@@ -433,7 +434,8 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
         try:
             data = json.loads(results_json_path.read_text())
             comparison_html = _render_comparison(data)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Failed to parse comparison results at {results_json_path}: {e}")
             comparison_html = "<p>Failed to parse comparison results.</p>"
 
     timing_html = _render_timing(job.tools_timing)
@@ -553,6 +555,7 @@ async def export_html(job_id: str):
     if not results_path.exists():
         raise HTTPException(status_code=404, detail=f"Results for job '{job_id}' not found — the job may still be running or may have failed")
 
+    logger.info(f"Exporting HTML report for job {job_id}")
     html = render_html_report(job, results_path, pdf_mode=False)
     headers = {"Content-Disposition": f'attachment; filename="report_{job_id}.html"'}
     return HTMLResponse(content=html, headers=headers)
@@ -570,8 +573,13 @@ async def export_pdf(job_id: str):
 
     from weasyprint import HTML
 
-    html = render_html_report(job, results_path, pdf_mode=True)
-    pdf_bytes = HTML(string=html).write_pdf()
+    logger.info(f"Exporting PDF report for job {job_id}")
+    try:
+        html = render_html_report(job, results_path, pdf_mode=True)
+        pdf_bytes = HTML(string=html).write_pdf()
+    except Exception as e:
+        logger.error(f"PDF generation failed for job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
 
     headers = {"Content-Disposition": f'attachment; filename="report_{job_id}.pdf"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)

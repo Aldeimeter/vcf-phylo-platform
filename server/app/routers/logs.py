@@ -4,8 +4,8 @@ import asyncio
 import json
 from typing import Dict, List
 from datetime import datetime, timedelta
-import logging
 import os
+from app.logger import logger
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -120,7 +120,7 @@ async def get_historical_logs(job_id: str, limit: int = 1000, minutes_back: int 
             return logs
             
     except Exception as e:
-        logging.error(f"Failed to query Loki for job {job_id}: {e}")
+        logger.error(f"Failed to query Loki for job {job_id}: {e}")
         return []
     
     return []
@@ -193,7 +193,7 @@ async def get_recent_logs(job_id: str):
             return logs
             
     except Exception as e:
-        logging.error(f"Failed to query recent logs from Loki for job {job_id}: {e}")
+        logger.error(f"Failed to query recent logs from Loki for job {job_id}: {e}")
         return []
     
     return []

@@ -11,17 +11,36 @@
         "name": "service",
         "label": "Service",
         "type": "custom",
-        "query": "fastapi,orchestrator,iqtree,fastreer,mrbayes,merger,comparison",
+        "query": "fastapi,fastapi_access,orchestrator,iqtree,fastreer,mrbayes,merger,comparison",
         "current": { "text": "All", "value": "$__all" },
         "options": [
-          { "text": "All", "value": "$__all", "selected": true },
-          { "text": "fastapi",    "value": "fastapi" },
-          { "text": "orchestrator", "value": "orchestrator" },
-          { "text": "iqtree",     "value": "iqtree" },
-          { "text": "fastreer",   "value": "fastreer" },
-          { "text": "mrbayes",    "value": "mrbayes" },
-          { "text": "merger",     "value": "merger" },
-          { "text": "comparison", "value": "comparison" }
+          { "text": "All",            "value": "$__all",        "selected": true },
+          { "text": "fastapi",        "value": "fastapi" },
+          { "text": "fastapi_access", "value": "fastapi_access" },
+          { "text": "orchestrator",   "value": "orchestrator" },
+          { "text": "iqtree",         "value": "iqtree" },
+          { "text": "fastreer",       "value": "fastreer" },
+          { "text": "mrbayes",        "value": "mrbayes" },
+          { "text": "merger",         "value": "merger" },
+          { "text": "comparison",     "value": "comparison" }
+        ],
+        "includeAll": true,
+        "multi": false,
+        "hide": 0
+      },
+      {
+        "name": "level",
+        "label": "Level",
+        "type": "custom",
+        "query": "debug,info,warning,error,critical",
+        "current": { "text": "All", "value": "$__all" },
+        "options": [
+          { "text": "All",      "value": "$__all",   "selected": true },
+          { "text": "debug",    "value": "debug" },
+          { "text": "info",     "value": "info" },
+          { "text": "warning",  "value": "warning" },
+          { "text": "error",    "value": "error" },
+          { "text": "critical", "value": "critical" }
         ],
         "includeAll": true,
         "multi": false,
@@ -56,18 +75,10 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki-datasource" },
-          "expr": "{service=~\"$service\"}",
+          "expr": "{service=~\"$service\", severity=~\"$level\"} |= \"$job_id\"",
           "legendFormat": "",
           "maxLines": 1000,
           "refId": "A"
-        },
-        {
-          "datasource": { "type": "loki", "uid": "loki-datasource" },
-          "expr": "{job_id=\"$job_id\"}",
-          "legendFormat": "",
-          "maxLines": 1000,
-          "refId": "B",
-          "hide": false
         }
       ],
       "datasource": { "type": "loki", "uid": "loki-datasource" }

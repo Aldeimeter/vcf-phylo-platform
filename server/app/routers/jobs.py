@@ -24,7 +24,8 @@ class CreateRequestBody(BaseModel):
 async def create_job(request_body: CreateRequestBody):
     try:
         client.images.get("orchestrator:latest")
-    except Exception:
+    except Exception as e:
+        logger.error(f"Orchestrator image not found: {e}")
         raise HTTPException(
             status_code=500,
             detail="Orchestrator image not found. Run ./startup.sh to build required images."
@@ -58,20 +59,26 @@ async def create_job(request_body: CreateRequestBody):
             orchestrator_env["MRBAYES_SWAPSEED"] = str(cfg.mrbayes_swapseed)
 
     logger.debug(f"Spawning orchestrator container for job {job_id}")
-    client.containers.run(
-        image="orchestrator:latest",
-        command=["python", "/app/main.py", job_id],
-        volumes={
-            dataset_path: {"bind": "/dataset", "mode": "ro"},
-            results_path: {"bind": "/results", "mode": "rw"},
-            os.environ["CACHE_PATH"]: {"bind": "/cache", "mode": "rw"},
-        },
-        environment=orchestrator_env,
-        network=os.environ.get("DOCKER_NETWORK", "phylo-net"),
-        remove=True,
-        privileged=True,
-        detach=True,
-    )
+    try:
+        client.containers.run(
+            image="orchestrator:latest",
+            command=["python", "/app/main.py", job_id],
+            volumes={
+                dataset_path: {"bind": "/dataset", "mode": "ro"},
+                results_path: {"bind": "/results", "mode": "rw"},
+                os.environ["CACHE_PATH"]: {"bind": "/cache", "mode": "rw"},
+            },
+            environment=orchestrator_env,
+            network=os.environ.get("DOCKER_NETWORK", "phylo-net"),
+            remove=True,
+            privileged=True,
+            detach=True,
+        )
+    except Exception as e:
+        logger.error(f"Failed to spawn orchestrator container for job {job_id}: {e}")
+        await job_storage.update_job(job_id, status=JobStatus.FAILED, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to start pipeline: {e}")
+
     logger.info(f"Orchestrator container started for job {job_id}")
     return {"job_id": job_id}
 
@@ -96,7 +103,13 @@ async def update_job_status(job_id: str, update: StatusUpdateBody):
         elif updates["status"] in [JobStatus.COMPLETED, JobStatus.FAILED]:
             updates["completed_at"] = datetime.now()
 
-    logger.info(f"Job {job_id} status update: {updates}")
+    new_status = updates.get("status")
+    if new_status == JobStatus.FAILED:
+        logger.error(f"Job {job_id} failed: {updates.get('error', 'no error message')}")
+    elif new_status == JobStatus.COMPLETED:
+        logger.info(f"Job {job_id} completed")
+    else:
+        logger.debug(f"Job {job_id} status update: {updates}")
     await job_storage.update_job(job_id, **updates)
     return {"success": True}
 

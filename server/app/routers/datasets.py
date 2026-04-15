@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 from app.services.docker import client
+from app.logger import logger
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -21,6 +22,7 @@ def get_datasets():
     try:
         entries = os.listdir(DATASETS_PATH)
     except FileNotFoundError:
+        logger.error(f"Datasets directory not found: {DATASETS_PATH}")
         raise HTTPException(status_code=500, detail=f"Datasets directory not found: {DATASETS_PATH}")
 
     def vcf_count(folder):
@@ -80,10 +82,13 @@ def _run_compressor(name: str, dataset_path_host: str):
             remove=True,
             detach=False,
         )
+        logger.info(f"Dataset '{name}' compressed successfully")
         _upload_status[name] = {"status": "ready", "error": ""}
     except Exception as e:
+        error_msg = _docker_error_message(e)
+        logger.error(f"Compression failed for dataset '{name}': {error_msg}")
         shutil.rmtree(os.path.join(DATASETS_PATH, name), ignore_errors=True)
-        _upload_status[name] = {"status": "failed", "error": f"Compression failed: {_docker_error_message(e)}"}
+        _upload_status[name] = {"status": "failed", "error": f"Compression failed: {error_msg}"}
 
 
 @router.post("/{name}/upload", status_code=202)
@@ -107,7 +112,8 @@ async def upload_dataset(
 
     try:
         client.images.get("vcf-compressor:latest")
-    except Exception:
+    except Exception as e:
+        logger.error(f"vcf-compressor image not found: {e}")
         raise HTTPException(
             status_code=500,
             detail="vcf-compressor image not found. Run ./startup.sh to build required images.",
@@ -126,13 +132,16 @@ async def upload_dataset(
             if upload_file.filename.endswith(".vcf"):
                 has_plain_vcf = True
     except Exception as e:
+        logger.error(f"Failed to save uploaded files for dataset '{name}': {e}")
         shutil.rmtree(dataset_path_internal, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to save files: {e}")
 
     if has_plain_vcf:
+        logger.info(f"Dataset '{name}' uploaded ({len(files)} file(s)), compression queued")
         _upload_status[name] = {"status": "processing", "error": ""}
         background_tasks.add_task(_run_compressor, name, dataset_path_host)
     else:
+        logger.info(f"Dataset '{name}' uploaded ({len(files)} file(s)), ready")
         _upload_status[name] = {"status": "ready", "error": ""}
 
     return JSONResponse(status_code=202, content={"name": name, "status": _upload_status[name]["status"]})
