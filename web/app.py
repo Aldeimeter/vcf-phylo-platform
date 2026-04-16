@@ -1016,8 +1016,8 @@ def server(input, output, session):
                                     ),
                                     ui.a(
                                         "Download",
-                                        href=f"{BACKEND_URL}{file_url}",
-                                        target="_blank",
+                                        href=f"/nwk{file_url}",
+                                        download=filename,
                                         class_="btn btn-sm btn-primary",
                                     ),
                                     style="display:flex; gap:6px;",
@@ -1246,9 +1246,26 @@ def export_proxy(request: Request) -> StarletteResponse:
         return StarletteResponse(content=f"Export failed: {e}", status_code=502)
 
 
+# NWK download proxy — browser hits /nwk/static/results/{job_id}/{tool}/{file}
+def nwk_proxy(request: Request) -> StarletteResponse:
+    path = request.path_params["path"]
+    try:
+        resp = requests.get(f"{BACKEND_URL}/static/results/{path}", timeout=30)
+        filename = path.rsplit("/", 1)[-1]
+        return StarletteResponse(
+            content=resp.content,
+            status_code=resp.status_code,
+            media_type="application/octet-stream",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        return StarletteResponse(content=f"Download failed: {e}", status_code=502)
+
+
 _shiny_app = App(app_ui, server, static_assets={"/assets": Path(__file__).parent / "www"})
 
 app = Starlette(routes=[
     Route("/export/{job_id}/{fmt}", export_proxy),
+    Route("/nwk/static/results/{path:path}", nwk_proxy),
     Mount("/", app=_shiny_app),
 ])
