@@ -216,14 +216,20 @@ def _build_layout(root: _Node, inner_width: float, inner_height: float) -> None:
     assign_y(root)
 
 
-def _newick_to_svg(newick: str) -> str:
-    ROW_HEIGHT = 28
+def _newick_to_svg(newick: str, svg_width: int = 1000, max_height: int | None = None) -> str:
+    """Render a Newick string as an SVG.
+
+    If *max_height* is given the row spacing is compressed so the tree fits
+    within that pixel budget — WeasyPrint does not scale SVG via viewBox, so
+    we must produce the right dimensions directly.
+    """
+    MAX_ROW_HEIGHT = 22
+    MIN_ROW_HEIGHT = 4
     MARGIN_LEFT = 16
-    MARGIN_RIGHT = 200
+    MARGIN_RIGHT = 220
     MARGIN_TOP = 16
     MARGIN_BOT = 16
-    SVG_WIDTH = 700
-    INNER_WIDTH = float(SVG_WIDTH - MARGIN_LEFT - MARGIN_RIGHT)
+    INNER_WIDTH = float(svg_width - MARGIN_LEFT - MARGIN_RIGHT)
 
     try:
         data = _parse_newick(newick)
@@ -233,14 +239,25 @@ def _newick_to_svg(newick: str) -> str:
     root = _Node(data)
     leaf_list = _leaves(root)
     n_leaves = len(leaf_list)
-    inner_height = float(max(n_leaves * ROW_HEIGHT, 80))
+
+    # Choose row height that fits within max_height if given
+    if max_height:
+        available = max_height - MARGIN_TOP - MARGIN_BOT
+        row_height = max(MIN_ROW_HEIGHT, min(MAX_ROW_HEIGHT, available / max(n_leaves, 1)))
+    else:
+        row_height = MAX_ROW_HEIGHT
+
+    inner_height = float(max(n_leaves * row_height, 80))
     svg_height = inner_height + MARGIN_TOP + MARGIN_BOT
+
+    # Scale font sizes proportionally when rows are compressed
+    label_font = max(7, min(12, int(row_height * 0.85)))
+    bootstrap_font = max(6, min(10, int(row_height * 0.7)))
 
     _build_layout(root, INNER_WIDTH, inner_height)
 
     elements: list[str] = []
 
-    # Links (elbow style matching D3 output)
     for node in _all_nodes(root):
         for child in node.children:
             elements.append(
@@ -248,29 +265,26 @@ def _newick_to_svg(newick: str) -> str:
                 f' fill="none" stroke="#495057" stroke-width="1.5"/>'
             )
 
-    # Circles and labels
     for node in _all_nodes(root):
         elements.append(
             f'<circle cx="{node.y:.1f}" cy="{node.x:.1f}" r="3" fill="#495057"/>'
         )
         name = node.data.get("name", "")
         if not node.children and name:
-            # Leaf label
             elements.append(
                 f'<text x="{node.y + 8:.1f}" y="{node.x:.1f}" dy="0.32em"'
-                f' font-size="12" fill="#212529" font-family="sans-serif">{name}</text>'
+                f' font-size="{label_font}" fill="#212529" font-family="sans-serif">{name}</text>'
             )
         elif node.children and node is not root and name:
-            # Bootstrap / internal label
             elements.append(
                 f'<text x="{node.y - 6:.1f}" y="{node.x:.1f}" dy="-0.4em"'
-                f' font-size="10" fill="#868e96" font-family="sans-serif"'
+                f' font-size="{bootstrap_font}" fill="#868e96" font-family="sans-serif"'
                 f' text-anchor="end">{name}</text>'
             )
 
     inner = "\n".join(elements)
     return (
-        f'<svg width="{SVG_WIDTH}" height="{svg_height:.0f}" xmlns="http://www.w3.org/2000/svg">'
+        f'<svg width="{svg_width}" height="{svg_height:.0f}" xmlns="http://www.w3.org/2000/svg">'
         f'<g transform="translate({MARGIN_LEFT},{MARGIN_TOP})">{inner}</g>'
         f'</svg>'
     )
@@ -447,7 +461,7 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
     if trees:
         for t in trees:
             if pdf_mode:
-                tree_viz = _newick_to_svg(t["newick"])
+                tree_viz = _newick_to_svg(t["newick"], svg_width=980, max_height=700)
                 tree_sections += f"""
     <div class="tree-card">
       <h3>{t["tool"]}</h3>
@@ -465,6 +479,10 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
     </div>"""
     else:
         tree_sections = "<p>No Newick files found.</p>"
+
+    pdf_css = """
+    @page { size: A4 landscape; margin: 1.5cm; }
+    """ if pdf_mode else ""
 
     d3_head = '<script src="https://d3js.org/d3.v7.min.js"></script>' if not pdf_mode else ""
     trees_json = json.dumps(trees)
@@ -492,7 +510,7 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Job Report — {job.id}</title>
   {d3_head}
-  <style>{_CSS}</style>
+  <style>{_CSS}{pdf_css}</style>
 </head>
 <body>
   <h1>Phylogenetic Analysis Report</h1>
