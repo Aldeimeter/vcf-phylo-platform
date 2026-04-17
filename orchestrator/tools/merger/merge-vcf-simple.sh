@@ -13,7 +13,11 @@ for vcf in /data/*.vcf; do
     filename=$(basename "$vcf")
     echo " Processing $filename..."
     bgzip -c "$vcf" > "${filename}.gz"
-    bcftools index "${filename}.gz"
+    if ! bcftools index "${filename}.gz" 2>/dev/null; then
+      echo "  Unsorted, re-sorting $filename..."
+      bcftools sort "$vcf" -Oz -o "${filename}.gz"
+      bcftools index "${filename}.gz"
+    fi
   fi
 done
 
