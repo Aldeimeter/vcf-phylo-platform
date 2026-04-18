@@ -21,7 +21,7 @@ services:
       - CONSOLE_LOG_LEVEL=debug
       - LOG_LEVEL=debug
       - FRONTEND_PORT=${FRONTEND_PORT:-8080}
-      - DOCKER_NETWORK=${NETWORK_NAME:-phylo-net}
+      - DOCKER_NETWORK=${COMPOSE_PROJECT_NAME}_phylo-net
     depends_on:
       - registry
       - mongodb
@@ -44,8 +44,6 @@ services:
     image: registry:2.8.3
     networks:
       - phylo-net
-    ports:
-      - "${REGISTRY_PORT:-5000}:5000"
     volumes:
       - ./registry-data:/var/lib/registry
     environment:
@@ -93,4 +91,3 @@ volumes:
 networks:
   phylo-net:
     driver: bridge
-    name: ${NETWORK_NAME:-phylo-net}

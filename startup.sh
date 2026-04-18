@@ -48,17 +48,8 @@ error() {
 step 1 "Starting Docker registry"
 docker-compose --profile grafana down --remove-orphans 2>/dev/null || true
 docker-compose up -d registry
-sleep 3
-
-REGISTRY_PORT=${REGISTRY_PORT:-5000}
-echo "Registry configured for port: ${REGISTRY_PORT}"
-
-# Check if registry is accessible
-if curl -f http://localhost:${REGISTRY_PORT}/v2/ > /dev/null 2>&1; then
-    success "Registry is running on port ${REGISTRY_PORT}"
-else
-    error "Registry failed to start on port ${REGISTRY_PORT}"
-fi
+sleep 2
+success "Registry started"
 
 step 2 "Building and pushing tool images"
 
@@ -87,13 +78,9 @@ echo "================================================"
 echo "Services running:"
 echo "  • FastAPI:  http://localhost:${FASTAPI_PORT:-8000}"
 echo "  • Frontend: http://localhost:${FRONTEND_PORT:-8080}"
-echo "  • Registry: http://localhost:${REGISTRY_PORT}"
 if [ "$WITH_GRAFANA" = true ]; then
 echo "  • Grafana:  http://localhost:${GRAFANA_PORT:-3000}"
 fi
-echo ""
-echo "Registry contents:"
-curl -s http://localhost:${REGISTRY_PORT}/v2/_catalog | jq '.' 2>/dev/null || echo "Registry catalog not available"
 echo ""
 echo "Container status:"
 docker-compose ps
