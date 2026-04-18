@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+cd "$(dirname "$0")/.."
+
 # Function to load .env file
 load_env() {
     if [ -f .env ]; then

@@ -1,7 +1,9 @@
- #!/bin/bash
+#!/bin/bash
 # startup.sh - Complete project startup script
 
 set -e  # Exit on any error
+
+cd "$(dirname "$0")/.."
 
 # Parse flags
 WITH_GRAFANA=false
@@ -45,6 +47,10 @@ error() {
     exit 1
 }
 
+step 0 "Ensuring data directories exist"
+mkdir -p server/data/datasets server/data/results server/data/cache/merger
+success "Data directories ready"
+
 step 1 "Starting Docker registry"
 docker-compose --profile grafana down --remove-orphans 2>/dev/null || true
 docker-compose up -d registry
@@ -53,7 +59,7 @@ success "Registry started"
 
 step 2 "Building and pushing tool images"
 
-./build-images.sh
+$(dirname "$0")/build-images.sh
 
 step 3 "Building orchestrator image"
 docker build -t orchestrator ./orchestrator || error "Failed to build orchestrator"
