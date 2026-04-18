@@ -600,7 +600,7 @@ def server(input, output, session):
             if logs:
                 # Format logs for display (chronological order)
                 formatted_logs = []
-                for log in logs[-50:]:  # Show last 50 logs
+                for log in logs:
                     formatted_logs.append(format_log_entry(log))
 
                 log_text = "\n".join(formatted_logs)
