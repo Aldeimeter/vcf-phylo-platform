@@ -33,11 +33,11 @@ cd <repo-name>
 
 All host-side ports can be overridden via a `.env` file in the project root:
 
-| Variable        | Default | Service         |
-| --------------- | ------- | --------------- |
-| `FRONTEND_PORT` | `8080`  | Web frontend    |
-| `FASTAPI_PORT`  | `8000`  | FastAPI backend |
-| `REGISTRY_PORT` | `5000`  | Docker registry |
+| Variable        | Default | Service            |
+| --------------- | ------- | ------------------ |
+| `FRONTEND_PORT` | `8080`  | Web frontend       |
+| `FASTAPI_PORT`  | `8000`  | FastAPI backend    |
+| `REGISTRY_PORT` | `5000`  | Docker registry    |
 | `GRAFANA_PORT`  | `3000`  | Grafana (optional) |
 
 Example — override ports that conflict on your machine:
@@ -49,54 +49,51 @@ echo "FRONTEND_PORT=9080" >> .env
 
 **3. Add datasets**
 
-Create the datasets directory if it does not exist, then add at least one dataset:
-
-```bash
-mkdir -p server/data/datasets
-```
-
-See the [Datasets](#datasets) section for the required structure.
+See the [Datasets](#datasets) section for the required structure. The data directories are created automatically on first startup.
 
 **4. Run the startup script**
 
 This builds all tool images, pushes them to the local registry, and starts all services:
 
 ```bash
-./startup.sh
+./scripts/startup.sh
 ```
 
 To also start the optional Grafana log dashboard, pass `--grafana`:
 
 ```bash
-./startup.sh --grafana
+./scripts/startup.sh --grafana
 ```
 
 Once startup completes, the following services are available:
 
-| Service         | Default URL                |
-| --------------- | -------------------------- |
-| Frontend        | http://localhost:8080      |
-| FastAPI         | http://localhost:8000      |
-| API docs        | http://localhost:8000/docs |
-| Registry        | http://localhost:5000      |
-| Grafana (opt.)  | http://localhost:3000      |
+| Service        | Default URL                |
+| -------------- | -------------------------- |
+| Frontend       | http://localhost:8080      |
+| FastAPI        | http://localhost:8000      |
+| API docs       | http://localhost:8000/docs |
+| Grafana (opt.) | http://localhost:3000      |
 
 If you overrode any ports in `.env`, replace the default port accordingly.
 
 ## Datasets
 
-Datasets are read from the `server/data/datasets/` directory. Each subfolder is one dataset. The pipeline requires **at least 3 VCF files** per dataset — one per sample — to produce meaningful phylogenetic trees.
+Datasets are read from the `server/data/datasets/` directory. Each subfolder is one dataset. The pipeline requires **at least 3 VCF files** per dataset — one per sample — to produce meaningful phylogenetic trees. Both `.vcf` and `.vcf.gz` files are accepted.
 
-**Adding a dataset:**
+**Adding a dataset — via the frontend (recommended):**
+
+Use the upload form on the **Datasets** page to create a new dataset and upload `.vcf` files directly from your browser.
+
+**Adding a dataset — manually:**
 
 1. Create a folder named after your dataset inside `server/data/datasets/`:
    ```
    server/data/datasets/<dataset_name>/
    ```
-2. Place **at least 3** `.vcf` files inside it (one per sample):
+2. Place **at least 3** `.vcf` or `.vcf.gz` files inside it (one per sample):
    ```
    server/data/datasets/my_cohort/sample1.vcf
-   server/data/datasets/my_cohort/sample2.vcf
+   server/data/datasets/my_cohort/sample2.vcf.gz
    server/data/datasets/my_cohort/sample3.vcf
    ```
 3. The dataset appears in the frontend and API automatically — no restart needed.
@@ -105,7 +102,7 @@ Example directory structure:
 
 ![Dataset directory structure](docs/datasets-example.png)
 
-> Folders with fewer than 3 VCF files are shown in the frontend with a warning and cannot be submitted for analysis. Folders with no VCF files are ignored entirely.
+> Folders with fewer than 3 VCF files are shown in the frontend with a warning and cannot be submitted for analysis. Folders with no VCF files are ignored entirely. Both `.vcf` and `.vcf.gz` files count toward the minimum.
 
 ## Usage
 
@@ -121,26 +118,17 @@ Results are also written to `server/data/results/<job_id>/` on disk.
 
 Grafana is an optional service that provides a browser-based UI for browsing logs from all pipeline components (FastAPI, orchestrator, and each tool).
 
-Start it with `./startup.sh --grafana`, then open `http://localhost:3000` (or your `GRAFANA_PORT`). The **Phylogenetic Pipeline Logs** dashboard opens automatically. Use the **Service** dropdown to filter by component, or paste a **Job ID** to see logs for a specific run.
+Start it with `./scripts/startup.sh --grafana`, then open `http://localhost:3000` (or your `GRAFANA_PORT`). The **Phylogenetic Pipeline Logs** dashboard opens automatically. Use the **Service** dropdown to filter by component, or paste a **Job ID** to see logs for a specific run.
 
-Logs are stored in Loki and are available for up to 1 hour after a job completes.
+Logs are stored in Loki and persist until the volume is cleared (e.g. via `./scripts/clear-jobs.sh` or `./scripts/reset.sh`).
 
 ## Management
 
-```bash
-# Rebuild everything from scratch
-docker-compose down
-./startup.sh
-
-# Rebuild only tool images
-./build-images.sh
-
-# Stop all services
-docker-compose down
-
-# View logs (terminal)
-docker-compose logs -f fastapi
-
-# View logs (browser, optional)
-./startup.sh --grafana
-```
+| Task                                   | Command                          |
+| -------------------------------------- | -------------------------------- |
+| Start all services                     | `./scripts/startup.sh`           |
+| Start with Grafana                     | `./scripts/startup.sh --grafana` |
+| Stop all services                      | `docker-compose down`            |
+| Restart                                | `./scripts/startup.sh`           |
+| Full reset (wipe all data and volumes) | `./scripts/reset.sh`             |
+| View live service logs                 | `docker-compose logs -f fastapi` |
