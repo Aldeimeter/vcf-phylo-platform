@@ -6,6 +6,7 @@ from typing import Dict, List
 from datetime import datetime, timedelta
 import os
 from app.logger import logger
+from app.services.job_storage import job_storage
 
 router = APIRouter(prefix="/logs", tags=["logs"])
 
@@ -25,8 +26,10 @@ async def websocket_logs(websocket: WebSocket, job_id: str):
     active_connections[job_id].append(websocket)
     
     try:
-        # Send historical logs first (last 5 minutes)
-        historical_logs = await get_historical_logs(job_id, limit=500)
+        # Send historical logs first, scoped to when the job started
+        job = await job_storage.get_job(job_id)
+        start_time = job.created_at if job else None
+        historical_logs = await get_historical_logs(job_id, limit=500, start_time=start_time)
         for log in historical_logs:
             await websocket.send_text(json.dumps(log))
             
@@ -64,15 +67,19 @@ async def websocket_logs(websocket: WebSocket, job_id: str):
 @router.get("/{job_id}/history")
 async def get_job_logs(job_id: str, limit: int = 1000):
     """Get historical logs for a job"""
-    logs = await get_historical_logs(job_id, limit)
+    job = await job_storage.get_job(job_id)
+    start_time = job.created_at if job else None
+    logs = await get_historical_logs(job_id, limit, start_time=start_time)
     return {"job_id": job_id, "logs": logs, "count": len(logs)}
 
-async def get_historical_logs(job_id: str, limit: int = 1000):
+async def get_historical_logs(job_id: str, limit: int = 1000, start_time: datetime | None = None):
     """Query Loki for historical logs"""
     loki_url = os.environ.get("LOKI_URL", "http://loki:3100")
 
     now = datetime.now()
-    start_ns = 0  # query from the beginning of time
+    if start_time is None:
+        start_time = now - timedelta(hours=1)
+    start_ns = int(start_time.timestamp() * 1_000_000_000)
     end_ns = int(now.timestamp() * 1_000_000_000)
     
     query = f'{{job_id="{job_id}"}}'
