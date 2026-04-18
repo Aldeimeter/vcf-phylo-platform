@@ -51,9 +51,14 @@ def _render_comparison(results_json: dict) -> str:
         tool_a, tool_b = pair_key.split("_vs_")
         topo = data.get("topology") or {}
         bl = data.get("branch_lengths") or {}
+        pearson = bl.get("pearson") or {}
+        spearman = bl.get("spearman") or {}
+        kf = data.get("normalized_kf") or {}
 
         topo_pct = topo.get("similarity_pct")
-        bl_pct = bl.get("similarity_pct")
+        pearson_pct = pearson.get("similarity_pct")
+        spearman_pct = spearman.get("similarity_pct")
+        kf_pct = kf.get("similarity_pct")
 
         topo_detail = ""
         if "raw_rf" in topo:
@@ -61,29 +66,52 @@ def _render_comparison(results_json: dict) -> str:
         elif "error" in topo:
             topo_detail = f'error: {topo["error"]}'
 
-        bl_detail = ""
-        if "pearson_r" in bl:
-            bl_detail = f'r={bl["pearson_r"]}, n={bl.get("pairs_used", "—")}'
-        elif "reason" in bl:
-            bl_detail = bl["reason"]
+        pearson_detail = ""
+        if "r" in pearson:
+            pearson_detail = f'r={pearson["r"]}, n={pearson.get("pairs_used", "—")}'
+        elif "reason" in pearson:
+            pearson_detail = pearson["reason"]
         elif "error" in bl:
-            bl_detail = f'error: {bl["error"]}'
+            pearson_detail = f'error: {bl["error"]}'
+
+        spearman_detail = ""
+        if "r" in spearman:
+            spearman_detail = f'ρ={spearman["r"]}, n={spearman.get("pairs_used", "—")}'
+        elif "reason" in spearman:
+            spearman_detail = spearman["reason"]
+
+        kf_detail = ""
+        if "kf_distance" in kf:
+            kf_detail = f'd={kf["kf_distance"]}'
+        elif "error" in kf:
+            kf_detail = f'error: {kf["error"]}'
 
         rows += f"""
         <tr>
           <td><strong>{tool_a}</strong> vs <strong>{tool_b}</strong></td>
           <td>{_pct_badge(topo_pct)}<br><small>{topo_detail}</small></td>
-          <td>{_pct_badge(bl_pct)}<br><small>{bl_detail}</small></td>
+          <td>{_pct_badge(pearson_pct)}<br><small>{pearson_detail}</small></td>
+          <td>{_pct_badge(spearman_pct)}<br><small>{spearman_detail}</small></td>
+          <td>{_pct_badge(kf_pct)}<br><small>{kf_detail}</small></td>
         </tr>"""
 
     return f"""
-    <p class="note">Trees are unrooted before comparison. Topology similarity uses the normalized Robinson-Foulds distance; branch length similarity uses Pearson correlation of normalized patristic distances.</p>
+    <table class="legend-table">
+      <tbody>
+        <tr><td><strong>Topology (RF)</strong></td><td>Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure.</td></tr>
+        <tr><td><strong>Branch lengths (Pearson)</strong></td><td>Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale.</td></tr>
+        <tr><td><strong>Branch lengths (Spearman)</strong></td><td>Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches.</td></tr>
+        <tr><td><strong>Branch lengths (KF)</strong></td><td>Kuhner-Felsenstein branch score on normalized branch lengths — measures per-branch magnitude disagreement. Unlike Pearson/Spearman, also penalizes topology differences (unmatched splits).</td></tr>
+      </tbody>
+    </table>
     <table>
       <thead>
         <tr>
           <th>Pair</th>
-          <th>Topology similarity</th>
-          <th>Branch length similarity</th>
+          <th>Topology (RF)</th>
+          <th>Branch lengths (Pearson)</th>
+          <th>Branch lengths (Spearman)</th>
+          <th>Branch lengths (KF)</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
@@ -419,6 +447,9 @@ _CSS = """
     .leaf-label { font-size: 12px; fill: #212529; font-family: sans-serif; }
     .bootstrap-label { font-size: 10px; fill: #868e96; font-family: sans-serif; text-anchor: end; }
     .note { font-size: 0.8rem; color: #6c757d; margin: 0 0 0.75rem; }
+    .legend-table { font-size: 0.8rem; color: #6c757d; margin-bottom: 0.75rem; box-shadow: none; background: #f8f9fa; }
+    .legend-table td { border-top: none; padding: 0.25rem 0.75rem; }
+    .legend-table td:first-child { white-space: nowrap; color: #495057; }
     details { margin-top: 0.75rem; }
     summary { font-size: 0.8rem; color: #6c757d; cursor: pointer; }
     pre.nwk { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;

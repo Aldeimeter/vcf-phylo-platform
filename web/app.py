@@ -1035,15 +1035,38 @@ def server(input, output, session):
                 comparison_data = fetch_results_json(results_json.get("url", ""))
                 if comparison_data:
                     content.append(ui.h4("Comparison Results"))
-                    content.append(ui.p("Topology is compared as unrooted trees.", class_="text-muted", style="font-size:0.85em;margin-bottom:12px;"))
+                    content.append(ui.div(
+                        ui.div(
+                            ui.span("Topology (RF): ", style="font-weight:600;"),
+                            ui.span("Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure."),
+                        ),
+                        ui.div(
+                            ui.span("Branch lengths (Pearson): ", style="font-weight:600;"),
+                            ui.span("Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale."),
+                        ),
+                        ui.div(
+                            ui.span("Branch lengths (Spearman): ", style="font-weight:600;"),
+                            ui.span("Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches."),
+                        ),
+                        ui.div(
+                            ui.span("Branch lengths (KF): ", style="font-weight:600;"),
+                            ui.span("Kuhner-Felsenstein branch score on normalized branch lengths — measures per-branch magnitude disagreement. Unlike Pearson/Spearman, also penalizes topology differences (unmatched splits)."),
+                        ),
+                        style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
+                    ))
                     for comparison, metrics in comparison_data.items():
                         title = comparison.replace("_vs_", " vs ").replace("_", " ").upper()
 
                         topo = metrics.get("topology") or {}
                         lengths = metrics.get("branch_lengths") or {}
+                        pearson_data = lengths.get("pearson") or {}
+                        spearman_data = lengths.get("spearman") or {}
+                        kf = metrics.get("normalized_kf") or {}
 
                         topo_pct = topo.get("similarity_pct")
-                        bl_pct = lengths.get("similarity_pct")
+                        bl_pct = pearson_data.get("similarity_pct")
+                        spearman_pct = spearman_data.get("similarity_pct")
+                        kf_pct = kf.get("similarity_pct")
 
                         def pct_color(pct):
                             if pct is None:
@@ -1067,7 +1090,7 @@ def server(input, output, session):
 
                         topo_block = ui.div(
                             ui.div(
-                                ui.span("Topology similarity", style="color:#6c757d;font-size:0.85em;"),
+                                ui.span("Topology (RF)", style="font-weight:600;font-size:0.9em;"),
                                 ui.span(
                                     f"{topo_pct}%" if topo_pct is not None else "N/A",
                                     style=f"font-size:1.8em;font-weight:700;color:{pct_color(topo_pct)};",
@@ -1076,16 +1099,16 @@ def server(input, output, session):
                             ),
                             pct_bar(topo_pct),
                             ui.div(
-                                ui.span(f"RF distance: {topo.get('raw_rf', '—')}  |  normalized: {format_number(topo.get('normalized_rf', 0))}", style="color:#6c757d;font-size:0.8em;")
+                                ui.span(f"RF={topo.get('raw_rf', '—')}  norm={format_number(topo.get('normalized_rf', 0))}", style="color:#6c757d;font-size:0.8em;")
                                 if "raw_rf" in topo else ui.span(""),
                                 style="margin-top:4px;",
                             ),
                             style="flex:1;padding:12px 16px;",
                         )
 
-                        bl_block = ui.div(
+                        pearson_block = ui.div(
                             ui.div(
-                                ui.span("Branch length similarity", style="color:#6c757d;font-size:0.85em;"),
+                                ui.span("Branch lengths (Pearson)", style="font-weight:600;font-size:0.9em;"),
                                 ui.span(
                                     f"{bl_pct}%" if bl_pct is not None else "N/A",
                                     style=f"font-size:1.8em;font-weight:700;color:{pct_color(bl_pct)};",
@@ -1095,13 +1118,58 @@ def server(input, output, session):
                             pct_bar(bl_pct),
                             ui.div(
                                 ui.span(
-                                    f"Pearson r: {format_number(lengths['pearson_r'])}  |  pairs: {lengths.get('pairs_used', '—')}",
+                                    f"r={format_number(pearson_data['r'])}  pairs={pearson_data.get('pairs_used', '—')}",
                                     style="color:#6c757d;font-size:0.8em;",
                                 )
-                                if "pearson_r" in lengths else ui.span(
-                                    lengths.get("reason", ""),
+                                if "r" in pearson_data else ui.span(
+                                    pearson_data.get("reason", ""),
                                     style="color:#6c757d;font-size:0.8em;",
                                 ),
+                                style="margin-top:4px;",
+                            ),
+                            style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
+                        )
+
+                        spearman_block = ui.div(
+                            ui.div(
+                                ui.span("Branch lengths (Spearman)", style="font-weight:600;font-size:0.9em;"),
+                                ui.span(
+                                    f"{spearman_pct}%" if spearman_pct is not None else "N/A",
+                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(spearman_pct)};",
+                                ),
+                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ),
+                            pct_bar(spearman_pct),
+                            ui.div(
+                                ui.span(
+                                    f"ρ={format_number(spearman_data['r'])}  pairs={spearman_data.get('pairs_used', '—')}",
+                                    style="color:#6c757d;font-size:0.8em;",
+                                )
+                                if "r" in spearman_data else ui.span(
+                                    spearman_data.get("reason", ""),
+                                    style="color:#6c757d;font-size:0.8em;",
+                                ),
+                                style="margin-top:4px;",
+                            ),
+                            style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
+                        )
+
+                        kf_block = ui.div(
+                            ui.div(
+                                ui.span("Branch lengths (KF)", style="font-weight:600;font-size:0.9em;"),
+                                ui.span(
+                                    f"{kf_pct}%" if kf_pct is not None else "N/A",
+                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(kf_pct)};",
+                                ),
+                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ),
+                            pct_bar(kf_pct),
+                            ui.div(
+                                ui.span(
+                                    f"d={format_number(kf['kf_distance'])}",
+                                    style="color:#6c757d;font-size:0.8em;",
+                                )
+                                if "kf_distance" in kf else ui.span(""),
                                 style="margin-top:4px;",
                             ),
                             style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
@@ -1110,7 +1178,7 @@ def server(input, output, session):
                         content.append(
                             ui.div(
                                 ui.div(title, class_="comparison-title", style="padding:12px 16px 0;"),
-                                ui.div(topo_block, bl_block, style="display:flex;"),
+                                ui.div(topo_block, pearson_block, spearman_block, kf_block, style="display:flex;"),
                                 class_="comparison-result",
                                 style="padding:0;",
                             )

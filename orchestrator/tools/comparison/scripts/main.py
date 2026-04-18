@@ -1,3 +1,4 @@
+import copy
 import json
 import math
 import os
@@ -82,24 +83,37 @@ def pearson(x, y):
     return num / den
 
 
+def spearman(x, y):
+    def ranks(lst):
+        order = sorted(range(len(lst)), key=lambda i: lst[i])
+        r = [0.0] * len(lst)
+        for rank, idx in enumerate(order):
+            r[idx] = rank + 1.0
+        return r
+    return pearson(ranks(x), ranks(y))
+
+
 def branch_length_similarity(tree1, tree2):
     """
-    Returns branch length similarity in % using Pearson correlation of
-    normalized patristic distance matrices. Normalization by total sum
-    makes it scale-independent (handles FastReer's different unit scale).
-    100% = perfectly proportional branch lengths, 0% = no correlation.
+    Returns Pearson and Spearman correlations of normalized patristic distance
+    matrices. Normalization by total sum makes both metrics scale-independent
+    (handles FastReer's cosine dissimilarity vs IQ-TREE/MrBayes substitution units).
+    Pearson measures linear proportionality; Spearman measures monotonic agreement
+    and is more robust to skewed branch length distributions.
+    100% = perfect agreement, 0% = no correlation.
     """
     d1 = patristic_distances(tree1)
     d2 = patristic_distances(tree2)
 
     common_pairs = set(d1.keys()) & set(d2.keys())
     if len(common_pairs) < 2:
-        return {"similarity_pct": None, "reason": "insufficient_common_taxa"}
+        na = {"similarity_pct": None, "reason": "insufficient_common_taxa"}
+        return {"pearson": na, "spearman": na}
 
     v1 = [d1[k] for k in common_pairs]
     v2 = [d2[k] for k in common_pairs]
 
-    # Normalize by total sum so scale differences (e.g. FastReer vs IQ-TREE) don't affect the result
+    # Normalize by total sum so scale differences don't affect the result
     sum1 = sum(v1)
     sum2 = sum(v2)
     if sum1 > 0:
@@ -107,16 +121,51 @@ def branch_length_similarity(tree1, tree2):
     if sum2 > 0:
         v2 = [x / sum2 for x in v2]
 
-    r = pearson(v1, v2)
-    if r is None:
-        return {"similarity_pct": None, "reason": "zero_variance"}
+    pairs_used = len(common_pairs)
 
-    similarity = max(0.0, r) * 100.0
+    def to_result(r):
+        if r is None:
+            return {"similarity_pct": None, "reason": "zero_variance", "pairs_used": pairs_used}
+        return {
+            "similarity_pct": round(max(0.0, r) * 100.0, 2),
+            "r": round(r, 4),
+            "pairs_used": pairs_used,
+        }
+
+    return {
+        "pearson": to_result(pearson(v1, v2)),
+        "spearman": to_result(spearman(v1, v2)),
+    }
+
+
+def normalized_kf_distance(tree1, tree2):
+    """
+    Kuhner-Felsenstein branch score on normalized branch lengths.
+    Each tree's edge lengths are divided by total tree length before computing,
+    so scale differences (e.g. FastReeR vs IQ-TREE) don't dominate the score.
+    Returns similarity as a percentage: 100% = identical branch structure, 0% = maximally different.
+    Max KF for normalized trees is sqrt(2), used to bound the similarity.
+    Note: unlike Pearson/Spearman, this penalizes topology differences too
+    (unmatched splits contribute their full normalized length to the score).
+    """
+    t1 = copy.deepcopy(tree1)
+    t2 = copy.deepcopy(tree2)
+    t2.migrate_taxon_namespace(t1.taxon_namespace)
+
+    for t in [t1, t2]:
+        total = sum(e.length for e in t.edges() if e.length is not None)
+        if total > 0:
+            for e in t.edges():
+                if e.length is not None:
+                    e.length /= total
+
+    kf = dendropy.calculate.treecompare.euclidean_distance(t1, t2)
+    max_kf = math.sqrt(2)
+    similarity = max(0.0, 1.0 - kf / max_kf) * 100.0
 
     return {
         "similarity_pct": round(similarity, 2),
-        "pearson_r": round(r, 4),
-        "pairs_used": len(common_pairs),
+        "kf_distance": round(kf, 4),
     }
 
 
@@ -146,16 +195,30 @@ def compare_trees(trees):
                 print(f"Branch length comparison error ({key}): {e}")
                 lengths = {"error": f"Branch length comparison failed for {key}: {e}"}
 
+            kf = None
+            try:
+                kf = normalized_kf_distance(t1, t2)
+            except Exception as e:
+                print(f"Normalized KF error ({key}): {e}")
+                kf = {"error": str(e)}
+
             results[key] = {
                 "topology": topo,
                 "branch_lengths": lengths,
+                "normalized_kf": kf,
             }
 
-            if topo and "similarity_pct" in topo and lengths and "similarity_pct" in lengths:
+            if topo and "similarity_pct" in topo:
                 t_pct = topo["similarity_pct"]
-                b_pct = lengths["similarity_pct"]
-                b_str = f"{b_pct}%" if b_pct is not None else "N/A"
-                print(f"  topology: {t_pct}%  branch lengths: {b_str}")
+                p_pct = (lengths.get("pearson") or {}).get("similarity_pct") if lengths else None
+                s_pct = (lengths.get("spearman") or {}).get("similarity_pct") if lengths else None
+                k_pct = kf.get("similarity_pct") if kf else None
+                print(
+                    f"  topology: {t_pct}%"
+                    f"  pearson: {p_pct if p_pct is not None else 'N/A'}%"
+                    f"  spearman: {s_pct if s_pct is not None else 'N/A'}%"
+                    f"  KF: {k_pct if k_pct is not None else 'N/A'}%"
+                )
 
     output_path = "/results/results.json"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
