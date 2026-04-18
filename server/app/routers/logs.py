@@ -67,16 +67,12 @@ async def get_job_logs(job_id: str, limit: int = 1000):
     logs = await get_historical_logs(job_id, limit)
     return {"job_id": job_id, "logs": logs, "count": len(logs)}
 
-async def get_historical_logs(job_id: str, limit: int = 1000, minutes_back: int = 60):
+async def get_historical_logs(job_id: str, limit: int = 1000):
     """Query Loki for historical logs"""
     loki_url = os.environ.get("LOKI_URL", "http://loki:3100")
-    
-    # Calculate time range (last X minutes)
+
     now = datetime.now()
-    since_time = now - timedelta(minutes=minutes_back)
-    
-    # Convert to nanoseconds (Loki format)
-    start_ns = int(since_time.timestamp() * 1_000_000_000)
+    start_ns = 0  # query from the beginning of time
     end_ns = int(now.timestamp() * 1_000_000_000)
     
     query = f'{{job_id="{job_id}"}}'
