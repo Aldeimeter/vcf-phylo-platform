@@ -32,7 +32,9 @@ def validate_dataset_name(name: str) -> Optional[str]:
         if response.status_code == 200:
             return None
         try:
-            return response.json().get("detail", f"Name validation failed (HTTP {response.status_code})")
+            return response.json().get(
+                "detail", f"Name validation failed (HTTP {response.status_code})"
+            )
         except Exception:
             return f"Name validation failed (HTTP {response.status_code})"
     except requests.ConnectionError:
@@ -49,7 +51,9 @@ def upload_dataset(name: str, file_infos) -> tuple:
         if response.status_code == 202:
             return True, ""
         try:
-            detail = response.json().get("detail", f"Upload failed (HTTP {response.status_code})")
+            detail = response.json().get(
+                "detail", f"Upload failed (HTTP {response.status_code})"
+            )
         except Exception:
             detail = f"Upload failed (HTTP {response.status_code})"
         return False, detail
@@ -65,7 +69,9 @@ def get_dataset_upload_status(name: str) -> dict:
         if response.status_code == 200:
             return response.json()
         try:
-            detail = response.json().get("detail", f"Status check failed (HTTP {response.status_code})")
+            detail = response.json().get(
+                "detail", f"Status check failed (HTTP {response.status_code})"
+            )
         except Exception:
             detail = f"Status check failed (HTTP {response.status_code})"
         return {"status": "failed", "error": detail}
@@ -75,7 +81,12 @@ def get_dataset_upload_status(name: str) -> dict:
         return {"status": "failed", "error": f"Status check error: {e}"}
 
 
-def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: Optional[int] = None, mrbayes_swapseed: Optional[int] = None) -> Optional[str]:
+def start_job(
+    dataset_id: str,
+    iqtree_seed: Optional[int] = None,
+    mrbayes_seed: Optional[int] = None,
+    mrbayes_swapseed: Optional[int] = None,
+) -> Optional[str]:
     """Start a new analysis job"""
     try:
         config = {}
@@ -94,7 +105,9 @@ def start_job(dataset_id: str, iqtree_seed: Optional[int] = None, mrbayes_seed: 
         if response.status_code == 200:
             return response.json()["job_id"], None
         try:
-            detail = response.json().get("detail", f"Job creation failed (HTTP {response.status_code})")
+            detail = response.json().get(
+                "detail", f"Job creation failed (HTTP {response.status_code})"
+            )
         except Exception:
             detail = f"Job creation failed (HTTP {response.status_code})"
         return None, detail
@@ -264,127 +277,107 @@ def app_ui(request: Request):
     return ui.page_fluid(
         ui.tags.head(
             ui.tags.style("""
-                .status-badge { 
-                    padding: 4px 8px; 
-                    border-radius: 3px; 
-                    font-weight: bold; 
-                    font-size: 0.9em;
-                }
-                .status-running { background-color: #fff3cd; color: #856404; }
-                .status-completed { background-color: #d4edda; color: #155724; }
-                .status-failed { background-color: #f8d7da; color: #721c24; }
-                .status-pending { background-color: #e2e3e5; color: #383d41; }
-                
-                .comparison-result {
-                    background: #f8f9fa;
-                    border-left: 4px solid #007bff;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border-radius: 0 5px 5px 0;
-                }
-                .comparison-title { font-weight: bold; margin-bottom: 10px; }
-                .metric { display: flex; justify-content: space-between; margin: 5px 0; }
-                .metric-name { color: #6c757d; }
-                .metric-value { font-weight: bold; }
-                
-                .file-item {
-                    background: #f8f9fa;
-                    border: 1px solid #e9ecef;
-                    border-radius: 5px;
-                    padding: 10px;
-                    margin: 5px 0;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-                .file-info { display: flex; flex-direction: column; }
-                .file-tool { font-weight: bold; color: #495057; font-size: 0.9em; }
-                .file-name { color: #6c757d; font-size: 0.8em; }
-                
-                .error-message {
-                    background: #f8d7da;
-                    color: #721c24;
-                    padding: 12px;
-                    border-radius: 5px;
-                    border: 1px solid #f5c6cb;
-                    margin: 10px 0;
-                }
-                
-                .alert {
-                    padding: 12px;
-                    border-radius: 5px;
-                    margin: 10px 0;
-                    border: 1px solid transparent;
-                }
-                .alert-success {
-                    background-color: #d4edda;
-                    color: #155724;
-                    border-color: #c3e6cb;
-                }
-                
-                .pipeline-status-list {
-                    background: #f8f9fa;
-                    border-radius: 5px;
-                    padding: 15px;
-                    border: 1px solid #e9ecef;
-                }
-                .pipeline-status-item {
-                    padding: 8px 0;
-                    font-size: 1.1em;
-                    border-bottom: 1px solid #e9ecef;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-                .pipeline-status-item:last-child {
-                    border-bottom: none;
-                }
-                .tool-name {
-                    font-weight: 500;
-                    color: #495057;
-                }
-                
-                .job-item {
-                    background: white;
-                    border: 1px solid #e9ecef;
-                    border-radius: 5px;
-                    padding: 15px;
-                    margin: 10px 0;
-                    transition: box-shadow 0.2s;
-                }
-                .job-item:hover {
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                }
-                
-                /* Hide scrollbar for log container */
-                #log-container::-webkit-scrollbar {
-                    display: none;
-                }
+                *, *::before, *::after { box-sizing: border-box; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f1f5f9; color: #1e293b; line-height: 1.6; }
 
-                .tree-container {
-                    width: 100%;
-                    min-height: 500px;
-                    background: white;
-                    overflow: hidden;
-                    cursor: grab;
-                }
-                .tree-container:active {
-                    cursor: grabbing;
-                }
-                .tree-section {
-                    border: 1px solid #e9ecef;
-                    border-radius: 8px;
-                    overflow: hidden;
-                    margin: 10px 0;
-                }
-                .tree-section-header {
-                    background: #f8f9fa;
-                    padding: 10px 15px;
-                    border-bottom: 1px solid #e9ecef;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
+                /* Page header */
+                .page-header { padding: 1.5rem 1.5rem .5rem; max-width: 960px; margin: 0 auto; }
+                .page-header h1 { font-size: 1.3rem; font-weight: 700; color: #1e293b; margin: 0; letter-spacing: -.01em; }
+                .page-header .page-subtitle { color: #64748b; font-size: .78rem; margin: 3px 0 0; letter-spacing: .02em; }
+
+                /* Navigation bar */
+                .nav-bar-inner { max-width: 960px; margin: 0 auto; padding: 0 1rem; display: flex; border-bottom: 1px solid #e2e8f0; }
+                .nav-bar .btn { border-radius: 0 !important; border: none !important; border-bottom: 3px solid transparent !important; padding: .75rem 1.25rem !important; color: #64748b; font-weight: 500; font-size: .875rem; background: transparent !important; box-shadow: none !important; transition: color .15s, border-color .15s; }
+                .nav-bar .btn:hover { color: #2563eb; border-bottom-color: #93c5fd !important; }
+
+                /* Content wrapper */
+                .content-wrapper { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+                /* Status badges */
+                .status-badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; font-weight: 600; font-size: .75em; letter-spacing: .04em; text-transform: uppercase; }
+                .status-running  { background: #fef3c7; color: #92400e; }
+                .status-completed { background: #d1fae5; color: #065f46; }
+                .status-failed   { background: #fee2e2; color: #991b1b; }
+                .status-pending  { background: #f1f5f9; color: #64748b; }
+
+                /* Pipeline overview card */
+                .pipeline-overview { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+                .pipeline-overview h4 { font-size: .95rem; font-weight: 700; color: #1e293b; margin: 0 0 .5rem; }
+                .pipeline-overview .overview-intro { color: #64748b; font-size: .82rem; margin-bottom: 1rem; }
+                .pipeline-step { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid #f1f5f9; }
+                .pipeline-step:last-child { border-bottom: none; padding-bottom: 0; }
+                .step-number { width: 26px; height: 26px; border-radius: 50%; background: #dbeafe; color: #1d4ed8; font-weight: 700; font-size: .8em; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+                .step-body strong { font-size: .88rem; color: #1e293b; }
+                .step-body p { margin: 2px 0 0; color: #64748b; font-size: .82rem; line-height: 1.4; }
+
+                /* Seeds card */
+                .seeds-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 1.25rem 1.5rem; margin-top: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+                .seeds-card h5 { font-size: .9rem; font-weight: 700; color: #1e293b; margin: 0 0 .3rem; }
+                .seeds-card .seeds-hint { color: #64748b; font-size: .8rem; margin-bottom: 1rem; }
+
+                /* Pipeline status list */
+                .pipeline-status-list { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; background: white; }
+                .pipeline-status-item { padding: 11px 16px; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; transition: background .1s; }
+                .pipeline-status-item:last-child { border-bottom: none; }
+                .pipeline-status-item:hover { background: #f8fafc; }
+                .tool-name { font-weight: 500; color: #374151; font-size: .9em; }
+
+                /* Comparison result cards */
+                .comparison-result { background: white; border: 1px solid #e2e8f0; border-radius: 12px; margin: 12px 0; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+                .comparison-title { padding: 10px 16px; background: #f8fafc; font-weight: 700; font-size: .75em; color: #475569; letter-spacing: .07em; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; }
+                .metric { display: flex; justify-content: space-between; margin: 5px 0; }
+                .metric-name { color: #64748b; }
+                .metric-value { font-weight: bold; }
+
+                /* File items */
+                .file-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; margin: 6px 0; display: flex; justify-content: space-between; align-items: center; }
+                .file-info { display: flex; flex-direction: column; gap: 2px; }
+                .file-tool { font-weight: 700; color: #1e293b; font-size: .88em; }
+                .file-name { color: #64748b; font-size: .78em; }
+
+                /* Alerts */
+                .error-message { background: #fee2e2; color: #991b1b; padding: 12px 16px; border-radius: 8px; border: 1px solid #fecaca; margin: 10px 0; font-size: .88em; }
+                .alert { padding: 11px 16px; border-radius: 8px; margin: 10px 0; border: 1px solid transparent; font-size: .88em; }
+                .alert-success { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+                .alert-warning { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+                .alert-info    { background: #dbeafe; color: #1e40af; border-color: #bfdbfe; }
+                .alert-danger  { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+
+                /* Job items */
+                .job-item { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 18px; margin: 8px 0; transition: box-shadow .15s, border-color .15s; display: flex; justify-content: space-between; align-items: center; }
+                .job-item:hover { box-shadow: 0 4px 14px rgba(0,0,0,.08); border-color: #93c5fd; }
+                .job-meta p { margin: 0; }
+                .job-id { font-weight: 700; font-size: .9rem; color: #1e293b; }
+                .job-dataset { color: #64748b; font-size: .82rem; margin-top: 3px !important; }
+                .job-created { color: #94a3b8; font-size: .78rem; margin-top: 2px !important; }
+
+                /* Upload section */
+                .upload-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px 20px; margin-bottom: 16px; }
+
+                /* Sidebar */
+                .sidebar-card { background: white; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.25rem; box-shadow: 0 1px 3px rgba(0,0,0,.05); }
+
+                /* Log container */
+                #log-container::-webkit-scrollbar { display: none; }
+                #log-container pre { white-space: pre-wrap; word-break: break-all; margin: 0; }
+
+                /* Tree */
+                .tree-container { width: 100%; min-height: 500px; background: white; overflow: hidden; cursor: grab; }
+                .tree-container:active { cursor: grabbing; }
+                .tree-section { border: 1px solid #e2e8f0; border-radius: 10px; overflow: hidden; margin: 10px 0; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+                .tree-section-header { background: #f8fafc; padding: 10px 16px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+
+                /* Form improvements */
+                .form-control { border-radius: 8px !important; border-color: #e2e8f0 !important; font-size: .9rem; }
+                .form-control:focus { border-color: #93c5fd !important; box-shadow: 0 0 0 3px rgba(59,130,246,.12) !important; }
+                .selectize-input { border-radius: 8px !important; border: 1px solid #e2e8f0 !important; box-shadow: none !important; font-size: .9rem; }
+                .selectize-input.focus { border-color: #93c5fd !important; box-shadow: 0 0 0 3px rgba(59,130,246,.12) !important; }
+
+                /* Section headings */
+                h2 { font-size: 1.35rem; font-weight: 700; color: #1e293b; margin-bottom: 1rem; }
+                h3 { font-size: 1.05rem; font-weight: 600; color: #374151; margin-bottom: .6rem; }
+                h4 { font-size: .95rem; font-weight: 600; color: #374151; margin-bottom: .5rem; }
+                hr { border-color: #e2e8f0; margin: 1.5rem 0; }
             """),
             ui.tags.script("""
                 function redirectToJob(jobId) {
@@ -443,24 +436,30 @@ def app_ui(request: Request):
                 });
             """),
             ui.tags.script(src="https://d3js.org/d3.v7.min.js"),
-            ui.tags.script(src=f"/assets/tree_renderer.js?v={int(os.path.getmtime(Path(__file__).parent / 'www' / 'tree_renderer.js'))}"),
+            ui.tags.script(
+                src=f"/assets/tree_renderer.js?v={int(os.path.getmtime(Path(__file__).parent / 'www' / 'tree_renderer.js'))}"
+            ),
+        ),
+        # Header
+        ui.div(
+            ui.h1("Phylogenetic Analysis Pipeline"),
+            ui.p(
+                "VCF phylogenetic analysis — IQ-TREE · FastReeR · MrBayes",
+                class_="page-subtitle",
+            ),
+            class_="page-header",
         ),
         # Navigation
         ui.div(
-            ui.h1("Phylogenetic Analysis Pipeline", class_="text-center mb-4"),
             ui.div(
-                ui.a(
-                    "Analysis",
-                    href="?page=analysis",
-                    class_="btn btn-outline-primary me-2",
-                ),
-                ui.a("Jobs", href="?page=jobs", class_="btn btn-outline-primary me-2"),
-                class_="text-center mb-4",
+                ui.a("Analysis", href="?page=analysis", class_="btn"),
+                ui.a("Jobs", href="?page=jobs", class_="btn"),
+                class_="nav-bar-inner",
             ),
-            class_="container-fluid",
+            class_="nav-bar",
         ),
         # Route-specific content
-        ui.output_ui("page_content"),
+        ui.div(ui.output_ui("page_content"), class_="content-wrapper"),
         # Hidden inputs for routing
         ui.div(
             ui.input_text("current_page", "", value=page),
@@ -489,7 +488,9 @@ def server(input, output, session):
     # Upload state
     upload_message = reactive.value("")
     upload_error = reactive.value("")
-    uploading_dataset = reactive.value(None)  # name of dataset being compressed, or None
+    uploading_dataset = reactive.value(
+        None
+    )  # name of dataset being compressed, or None
 
     # Upload status polling
     @reactive.effect
@@ -507,7 +508,9 @@ def server(input, output, session):
             datasets_list.set(get_datasets())
             ui.update_text("upload_dataset_name", value="")
         elif status == "failed":
-            upload_error.set(status_data.get("error") or "Compression failed with an unknown error.")
+            upload_error.set(
+                status_data.get("error") or "Compression failed with an unknown error."
+            )
             upload_message.set("")
             uploading_dataset.set(None)
 
@@ -518,7 +521,9 @@ def server(input, output, session):
         except Exception:
             files_ready = False
         disabled = not files_ready or uploading_dataset.get() is not None
-        return ui.input_action_button("upload_btn", "Upload", class_="btn btn-primary mt-1", disabled=disabled)
+        return ui.input_action_button(
+            "upload_btn", "Upload", class_="btn btn-primary mt-1", disabled=disabled
+        )
 
     # Load initial data
     @reactive.effect
@@ -562,9 +567,10 @@ def server(input, output, session):
 
                 # Only update job data if status or pipeline changed
                 old_data = current_job_data.get() or {}
-                if (
-                    status_data.get("status") != old_data.get("status")
-                    or status_data.get("pipeline_status") != old_data.get("pipeline_status")
+                if status_data.get("status") != old_data.get(
+                    "status"
+                ) or status_data.get("pipeline_status") != old_data.get(
+                    "pipeline_status"
                 ):
                     current_job_data.set(status_data)
 
@@ -673,7 +679,11 @@ def server(input, output, session):
             ),
             upload_feedback,
             ui.div(
-                ui.input_text("upload_dataset_name", "Dataset Name", placeholder="e.g. my-samples-2024"),
+                ui.input_text(
+                    "upload_dataset_name",
+                    "Dataset Name",
+                    placeholder="e.g. my-samples-2024",
+                ),
                 ui.p(
                     "Only letters, numbers, hyphens, and underscores.",
                     class_="text-muted mb-2",
@@ -692,23 +702,31 @@ def server(input, output, session):
                 ),
                 ui.output_ui("upload_btn_output"),
                 id="upload-collapse",
-                class_=collapse_class,
-                style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin-bottom: 16px;",
+                class_=f"upload-card {collapse_class}",
             ),
         )
 
         if datasets is None:
             datasets_content = ui.p("Loading datasets...", class_="text-muted")
         elif not datasets:
-            datasets_content = ui.p("No datasets available. Add VCF files to the datasets directory.", class_="text-muted")
+            datasets_content = ui.p(
+                "No datasets available. Add VCF files to the datasets directory.",
+                class_="text-muted",
+            )
         else:
             choices_dict = {"": "Select a dataset..."}
             for d in datasets:
-                label = d["name"] if d["vcf_count"] >= 3 else f"{d['name']} ({d['vcf_count']} file{'s' if d['vcf_count'] != 1 else ''} — need at least 3)"
+                label = (
+                    d["name"]
+                    if d["vcf_count"] >= 3
+                    else f"{d['name']} ({d['vcf_count']} file{'s' if d['vcf_count'] != 1 else ''} — need at least 3)"
+                )
                 choices_dict[d["name"]] = label
 
             selected_name = selected_dataset.get()
-            selected_ds = next((d for d in datasets if d["name"] == selected_name), None)
+            selected_ds = next(
+                (d for d in datasets if d["name"] == selected_name), None
+            )
             insufficient_warning = (
                 ui.div(
                     f"This dataset only has {selected_ds['vcf_count']} VCF file{'s' if selected_ds['vcf_count'] != 1 else ''}. At least 3 are required for the pipeline.",
@@ -731,54 +749,51 @@ def server(input, output, session):
 
         pipeline_steps = [
             (
-                "1. VCF Merger",
+                "VCF Merger",
                 "Merges all VCF files in the dataset into a single multi-sample VCF file for downstream analysis.",
             ),
             (
-                "2. IQ-TREE",
+                "IQ-TREE",
                 "Constructs a maximum-likelihood phylogenetic tree using the GTR substitution model.",
             ),
             (
-                "3. FastReer",
+                "FastReer",
                 "Builds a fast neighbor-joining phylogenetic tree as an alternative to ML inference.",
             ),
             (
-                "4. MrBayes",
+                "MrBayes",
                 "Runs Bayesian phylogenetic inference to estimate a consensus tree with posterior probability support values.",
             ),
             (
-                "5. Comparison",
+                "Comparison",
                 "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using Robinson-Foulds (RF) distance metrics.",
             ),
         ]
 
         step_items = []
         for i, (title, description) in enumerate(pipeline_steps):
-            is_last = i == len(pipeline_steps) - 1
             step_items.append(
                 ui.div(
-                    ui.strong(title),
-                    ui.p(
-                        description, class_="mb-0 text-muted", style="font-size: 0.9em;"
+                    ui.div(str(i + 1), class_="step-number"),
+                    ui.div(
+                        ui.tags.strong(title),
+                        ui.p(description),
+                        class_="step-body",
                     ),
-                    style=f"padding: 10px 0;{'' if is_last else ' border-bottom: 1px solid #e9ecef;'}",
+                    class_="pipeline-step",
                 )
             )
 
         pipeline_info = ui.div(
-            ui.h4("Pipeline Overview", class_="mb-3"),
-            ui.p(
-                "The analysis runs the following tools automatically in sequence:",
-                class_="text-muted mb-3",
-                style="font-size: 0.9em;",
-            ),
+            ui.h4("Pipeline Overview"),
+            ui.p("Tools run automatically in sequence:", class_="overview-intro"),
             *step_items,
-            style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px; padding: 20px; margin-bottom: 24px;",
+            class_="pipeline-overview",
         )
 
         seeds_ui = ui.div(
-            ui.h5("Random Seeds (optional)", class_="mt-4 mb-2"),
-            ui.p("Leave blank to use default values.", class_="text-muted mb-3", style="font-size: 0.9em;"),
+            ui.h5("Random Seeds (optional)"),
+            ui.p("Leave blank to use defaults.", class_="seeds-hint"),
             ui.div(
                 ui.div(
                     ui.input_numeric("iqtree_seed", "IQ-TREE seed", value=None, min=1),
@@ -789,11 +804,14 @@ def server(input, output, session):
                     class_="col-md-4",
                 ),
                 ui.div(
-                    ui.input_numeric("mrbayes_swapseed", "MrBayes swapseed", value=None, min=1),
+                    ui.input_numeric(
+                        "mrbayes_swapseed", "MrBayes swapseed", value=None, min=1
+                    ),
                     class_="col-md-4",
                 ),
                 class_="row",
             ),
+            class_="seeds-card",
         )
 
         return ui.div(
@@ -801,7 +819,10 @@ def server(input, output, session):
             error_ui,
             pipeline_info,
             upload_section,
-            ui.p("Choose a dataset to start phylogenetic analysis:"),
+            ui.p(
+                "Select a dataset:",
+                style="font-weight:600;font-size:.9rem;margin-bottom:.4rem;",
+            ),
             datasets_content,
             seeds_ui,
             ui.div(
@@ -809,6 +830,7 @@ def server(input, output, session):
                     "start_analysis",
                     "Start Analysis",
                     class_="btn btn-success btn-lg mt-3",
+                    style="min-width:180px;",
                 ),
                 class_="text-center",
             ),
@@ -826,7 +848,10 @@ def server(input, output, session):
             ui.input_selectize(
                 "jobs_filter_dataset_input",
                 "Filter by Dataset:",
-                choices={"": "All Datasets", **{d["name"]: d["name"] for d in (datasets or [])}},
+                choices={
+                    "": "All Datasets",
+                    **{d["name"]: d["name"] for d in (datasets or [])},
+                },
                 selected=current_dataset_filter,
                 width="100%",
             ),
@@ -842,8 +867,8 @@ def server(input, output, session):
                 "Apply Filters",
                 class_="btn btn-primary w-100 mt-3",
             ),
-            class_="col-md-3",
-            style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; height: fit-content;",
+            class_="col-md-3 sidebar-card",
+            style="height: fit-content;",
         )
 
         # Main content area
@@ -870,15 +895,28 @@ def server(input, output, session):
                 job_items.append(
                     ui.div(
                         ui.div(
-                            ui.h5(f"Job {job_id[:8]}...", class_="mb-2"),
-                            ui.p(f"Dataset: {dataset_id}"),
-                            ui.p(["Status: ", ui.span(status, class_=status_class)]),
-                            ui.p(f"Created: {created_at}"),
-                            ui.a(
-                                "View Details",
-                                href=f"?page=job&job_id={job_id}",
-                                class_="btn btn-primary btn-sm",
+                            ui.p(
+                                [
+                                    ui.span(f"Job {job_id[:8]}…", class_="job-id me-2"),
+                                    ui.span(status, class_=status_class),
+                                ],
+                                style="display:flex;align-items:center;gap:8px;margin-bottom:4px;",
                             ),
+                            ui.p(
+                                [
+                                    "Dataset: ",
+                                    ui.span(dataset_id, style="font-weight:600;"),
+                                ],
+                                class_="job-dataset",
+                            ),
+                            ui.p(f"Created: {created_at}", class_="job-created"),
+                            class_="job-meta",
+                        ),
+                        ui.a(
+                            "View →",
+                            href=f"?page=job&job_id={job_id}",
+                            class_="btn btn-outline-primary btn-sm",
+                            style="white-space:nowrap;",
                         ),
                         class_="job-item",
                     )
@@ -907,31 +945,47 @@ def server(input, output, session):
         # Pipeline status list
         tool_order = ["merger", "iqtree", "fastreer", "mrbayes", "comparison"]
         tool_names = ["VCF Merger", "IQ-TREE", "FastReer", "MrBayes", "Comparison"]
+        status_icons = {"pending": "○", "running": "◉", "completed": "✓", "failed": "✗"}
 
         pipeline_list_items = []
         for tool, name in zip(tool_order, tool_names):
             tool_status = pipeline_status.get(tool, "pending")
             status_class = f"status-badge status-{tool_status}"
+            icon = status_icons.get(tool_status, "○")
             pipeline_list_items.append(
                 ui.div(
-                    ui.span(f"{name}:", class_="tool-name"),
-                    ui.span(tool_status.upper(), class_=status_class),
+                    ui.span(name, class_="tool-name"),
+                    ui.span(f"{icon}  {tool_status.upper()}", class_=status_class),
                     class_="pipeline-status-item",
                 )
             )
 
         content = [
-            ui.div(
-                ui.a(
-                    "← Back to Jobs", href="?page=jobs", class_="btn btn-secondary mb-3"
-                )
-            ),
+            ui.a("← Back to Jobs", href="?page=jobs", class_="btn btn-secondary mb-3"),
             ui.h2("Job Details"),
             ui.div(
-                ui.p(f"Job ID: {job_id}"),
-                ui.p(f"Dataset: {dataset_id}"),
-                ui.p(f"Current Stage: {current_stage}"),
-                class_="mb-3",
+                ui.p(
+                    [
+                        ui.span("Job ID: ", style="color:#64748b;font-size:.85em;"),
+                        ui.span(
+                            job_id,
+                            style="font-family:monospace;font-size:.85em;font-weight:600;",
+                        ),
+                    ]
+                ),
+                ui.p(
+                    [
+                        ui.span("Dataset: ", style="color:#64748b;font-size:.85em;"),
+                        ui.span(dataset_id, style="font-weight:600;font-size:.85em;"),
+                    ]
+                ),
+                ui.p(
+                    [
+                        ui.span("Stage: ", style="color:#64748b;font-size:.85em;"),
+                        ui.span(current_stage, style="font-size:.85em;"),
+                    ]
+                ),
+                style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:1rem;",
             ),
             ui.div(
                 ui.h4("Pipeline Status"),
@@ -942,12 +996,12 @@ def server(input, output, session):
 
         # Add logs section
         content.append(ui.hr())
-        content.append(ui.h3("Live Logs"))
+        content.append(ui.h3("Logs"))
         content.append(
             ui.div(
                 ui.output_text_verbatim("job_logs"),
                 id="log-container",
-                style="height: 400px; overflow-y: auto; background: #f8f9fa; color: #212529; padding: 15px; border: 1px solid #dee2e6; border-radius: 5px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 13px; line-height: 1.4; scrollbar-width: none; -ms-overflow-style: none;",
+                style="height: 380px; overflow-y: auto; background: #f8fafc; color: #374151; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12.5px; line-height: 1.5; scrollbar-width: none; -ms-overflow-style: none;",
             )
         )
 
@@ -957,7 +1011,6 @@ def server(input, output, session):
             content.append(ui.h3("Results"))
             content.append(
                 ui.div(
-                    ui.div("Results available.", class_="alert alert-success"),
                     ui.div(
                         ui.a(
                             "Export HTML",
@@ -992,10 +1045,18 @@ def server(input, output, session):
                         pass
 
                     tree_viz = (
-                        ui.div(**{"data-newick": nwk_content}, class_="tree-container", style="display:none;")
+                        ui.div(
+                            **{"data-newick": nwk_content},
+                            class_="tree-container",
+                            style="display:none;",
+                        )
                         if nwk_content
                         else ui.div(
-                            ui.p("Tree visualization unavailable.", class_="text-muted", style="padding:15px;"),
+                            ui.p(
+                                "Tree visualization unavailable.",
+                                class_="text-muted",
+                                style="padding:15px;",
+                            ),
                             class_="tree-container",
                             style="display:none;",
                         )
@@ -1017,7 +1078,7 @@ def server(input, output, session):
                                     ui.a(
                                         "Download",
                                         href=f"/nwk{file_url}",
-                                        download=filename,
+                                        download=f"{job_id}-{file_info.get('tool', 'unknown')}-output.nwk",
                                         class_="btn btn-sm btn-primary",
                                     ),
                                     style="display:flex; gap:6px;",
@@ -1035,27 +1096,47 @@ def server(input, output, session):
                 comparison_data = fetch_results_json(results_json.get("url", ""))
                 if comparison_data:
                     content.append(ui.h4("Comparison Results"))
-                    content.append(ui.div(
+                    content.append(
                         ui.div(
-                            ui.span("Topology (RF): ", style="font-weight:600;"),
-                            ui.span("Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure."),
-                        ),
-                        ui.div(
-                            ui.span("Branch lengths (Pearson): ", style="font-weight:600;"),
-                            ui.span("Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale."),
-                        ),
-                        ui.div(
-                            ui.span("Branch lengths (Spearman): ", style="font-weight:600;"),
-                            ui.span("Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches."),
-                        ),
-                        ui.div(
-                            ui.span("Branch lengths (KF): ", style="font-weight:600;"),
-                            ui.span("Kuhner-Felsenstein branch score on normalized branch lengths — measures per-branch magnitude disagreement. Unlike Pearson/Spearman, also penalizes topology differences (unmatched splits)."),
-                        ),
-                        style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
-                    ))
+                            ui.div(
+                                ui.span("Topology (RF): ", style="font-weight:600;"),
+                                ui.span(
+                                    "Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure."
+                                ),
+                            ),
+                            ui.div(
+                                ui.span(
+                                    "Branch lengths (Pearson): ",
+                                    style="font-weight:600;",
+                                ),
+                                ui.span(
+                                    "Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale."
+                                ),
+                            ),
+                            ui.div(
+                                ui.span(
+                                    "Branch lengths (Spearman): ",
+                                    style="font-weight:600;",
+                                ),
+                                ui.span(
+                                    "Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches."
+                                ),
+                            ),
+                            ui.div(
+                                ui.span(
+                                    "Branch lengths (KF): ", style="font-weight:600;"
+                                ),
+                                ui.span(
+                                    "Kuhner-Felsenstein branch score on normalized branch lengths — measures per-branch magnitude disagreement. Unlike Pearson/Spearman, also penalizes topology differences (unmatched splits)."
+                                ),
+                            ),
+                            style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
+                        )
+                    )
                     for comparison, metrics in comparison_data.items():
-                        title = comparison.replace("_vs_", " vs ").replace("_", " ").upper()
+                        title = (
+                            comparison.replace("_vs_", " vs ").replace("_", " ").upper()
+                        )
 
                         topo = metrics.get("topology") or {}
                         lengths = metrics.get("branch_lengths") or {}
@@ -1079,7 +1160,10 @@ def server(input, output, session):
 
                         def pct_bar(pct):
                             if pct is None:
-                                return ui.span("N/A", style="color:#6c757d;font-size:1.4em;font-weight:700;")
+                                return ui.span(
+                                    "N/A",
+                                    style="color:#6c757d;font-size:1.4em;font-weight:700;",
+                                )
                             color = pct_color(pct)
                             return ui.div(
                                 ui.div(
@@ -1089,31 +1173,35 @@ def server(input, output, session):
                             )
 
                         topo_block = ui.div(
-                            ui.div(
-                                ui.span("Topology (RF)", style="font-weight:600;font-size:0.9em;"),
-                                ui.span(
-                                    f"{topo_pct}%" if topo_pct is not None else "N/A",
-                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(topo_pct)};",
-                                ),
-                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ui.span(
+                                "Topology (RF)",
+                                style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
+                            ),
+                            ui.span(
+                                f"{topo_pct}%" if topo_pct is not None else "N/A",
+                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(topo_pct)};display:block;",
                             ),
                             pct_bar(topo_pct),
                             ui.div(
-                                ui.span(f"RF={topo.get('raw_rf', '—')}  norm={format_number(topo.get('normalized_rf', 0))}", style="color:#6c757d;font-size:0.8em;")
-                                if "raw_rf" in topo else ui.span(""),
+                                ui.span(
+                                    f"RF={topo.get('raw_rf', '—')}  norm={format_number(topo.get('normalized_rf', 0))}",
+                                    style="color:#6c757d;font-size:0.8em;",
+                                )
+                                if "raw_rf" in topo
+                                else ui.span(""),
                                 style="margin-top:4px;",
                             ),
                             style="flex:1;padding:12px 16px;",
                         )
 
                         pearson_block = ui.div(
-                            ui.div(
-                                ui.span("Branch lengths (Pearson)", style="font-weight:600;font-size:0.9em;"),
-                                ui.span(
-                                    f"{bl_pct}%" if bl_pct is not None else "N/A",
-                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(bl_pct)};",
-                                ),
-                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ui.span(
+                                "Branch lengths (Pearson)",
+                                style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
+                            ),
+                            ui.span(
+                                f"{bl_pct}%" if bl_pct is not None else "N/A",
+                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(bl_pct)};display:block;",
                             ),
                             pct_bar(bl_pct),
                             ui.div(
@@ -1121,7 +1209,8 @@ def server(input, output, session):
                                     f"r={format_number(pearson_data['r'])}  pairs={pearson_data.get('pairs_used', '—')}",
                                     style="color:#6c757d;font-size:0.8em;",
                                 )
-                                if "r" in pearson_data else ui.span(
+                                if "r" in pearson_data
+                                else ui.span(
                                     pearson_data.get("reason", ""),
                                     style="color:#6c757d;font-size:0.8em;",
                                 ),
@@ -1131,13 +1220,15 @@ def server(input, output, session):
                         )
 
                         spearman_block = ui.div(
-                            ui.div(
-                                ui.span("Branch lengths (Spearman)", style="font-weight:600;font-size:0.9em;"),
-                                ui.span(
-                                    f"{spearman_pct}%" if spearman_pct is not None else "N/A",
-                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(spearman_pct)};",
-                                ),
-                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ui.span(
+                                "Branch lengths (Spearman)",
+                                style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
+                            ),
+                            ui.span(
+                                f"{spearman_pct}%"
+                                if spearman_pct is not None
+                                else "N/A",
+                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(spearman_pct)};display:block;",
                             ),
                             pct_bar(spearman_pct),
                             ui.div(
@@ -1145,7 +1236,8 @@ def server(input, output, session):
                                     f"ρ={format_number(spearman_data['r'])}  pairs={spearman_data.get('pairs_used', '—')}",
                                     style="color:#6c757d;font-size:0.8em;",
                                 )
-                                if "r" in spearman_data else ui.span(
+                                if "r" in spearman_data
+                                else ui.span(
                                     spearman_data.get("reason", ""),
                                     style="color:#6c757d;font-size:0.8em;",
                                 ),
@@ -1155,13 +1247,13 @@ def server(input, output, session):
                         )
 
                         kf_block = ui.div(
-                            ui.div(
-                                ui.span("Branch lengths (KF)", style="font-weight:600;font-size:0.9em;"),
-                                ui.span(
-                                    f"{kf_pct}%" if kf_pct is not None else "N/A",
-                                    style=f"font-size:1.8em;font-weight:700;color:{pct_color(kf_pct)};",
-                                ),
-                                style="display:flex;justify-content:space-between;align-items:baseline;",
+                            ui.span(
+                                "Branch lengths (KF)",
+                                style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
+                            ),
+                            ui.span(
+                                f"{kf_pct}%" if kf_pct is not None else "N/A",
+                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(kf_pct)};display:block;",
                             ),
                             pct_bar(kf_pct),
                             ui.div(
@@ -1169,7 +1261,8 @@ def server(input, output, session):
                                     f"d={format_number(kf['kf_distance'])}",
                                     style="color:#6c757d;font-size:0.8em;",
                                 )
-                                if "kf_distance" in kf else ui.span(""),
+                                if "kf_distance" in kf
+                                else ui.span(""),
                                 style="margin-top:4px;",
                             ),
                             style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
@@ -1177,8 +1270,18 @@ def server(input, output, session):
 
                         content.append(
                             ui.div(
-                                ui.div(title, class_="comparison-title", style="padding:12px 16px 0;"),
-                                ui.div(topo_block, pearson_block, spearman_block, kf_block, style="display:flex;"),
+                                ui.div(
+                                    title,
+                                    class_="comparison-title",
+                                    style="padding:12px 16px 0;",
+                                ),
+                                ui.div(
+                                    topo_block,
+                                    pearson_block,
+                                    spearman_block,
+                                    kf_block,
+                                    style="display:flex;",
+                                ),
                                 class_="comparison-result",
                                 style="padding:0;",
                             )
@@ -1245,7 +1348,9 @@ def server(input, output, session):
         datasets = datasets_list.get() or []
         selected_ds = next((d for d in datasets if d["name"] == dataset), None)
         if selected_ds and selected_ds["vcf_count"] < 3:
-            error_message.set(f"Dataset '{dataset}' has only {selected_ds['vcf_count']} VCF file(s). At least 3 are required.")
+            error_message.set(
+                f"Dataset '{dataset}' has only {selected_ds['vcf_count']} VCF file(s). At least 3 are required."
+            )
             return
 
         def read_seed(input_fn):
@@ -1259,7 +1364,12 @@ def server(input, output, session):
         mrbayes_seed = read_seed(input.mrbayes_seed)
         mrbayes_swapseed = read_seed(input.mrbayes_swapseed)
 
-        job_id, error = start_job(dataset, iqtree_seed=iqtree_seed, mrbayes_seed=mrbayes_seed, mrbayes_swapseed=mrbayes_swapseed)
+        job_id, error = start_job(
+            dataset,
+            iqtree_seed=iqtree_seed,
+            mrbayes_seed=mrbayes_seed,
+            mrbayes_swapseed=mrbayes_swapseed,
+        )
         if job_id:
             # Redirect to job details page using JavaScript
             from shiny import ui
@@ -1308,7 +1418,9 @@ def export_proxy(request: Request) -> StarletteResponse:
             content=resp.content,
             status_code=resp.status_code,
             media_type=resp.headers.get("content-type", "application/octet-stream"),
-            headers={"Content-Disposition": resp.headers.get("content-disposition", "")},
+            headers={
+                "Content-Disposition": resp.headers.get("content-disposition", "")
+            },
         )
     except Exception as e:
         return StarletteResponse(content=f"Export failed: {e}", status_code=502)
@@ -1319,7 +1431,8 @@ def nwk_proxy(request: Request) -> StarletteResponse:
     path = request.path_params["path"]
     try:
         resp = requests.get(f"{BACKEND_URL}/static/results/{path}", timeout=30)
-        filename = path.rsplit("/", 1)[-1]
+        parts = path.split("/")
+        filename = f"{parts[0]}-{parts[1]}-output.nwk" if len(parts) >= 3 else path.rsplit("/", 1)[-1]
         return StarletteResponse(
             content=resp.content,
             status_code=resp.status_code,
@@ -1330,10 +1443,14 @@ def nwk_proxy(request: Request) -> StarletteResponse:
         return StarletteResponse(content=f"Download failed: {e}", status_code=502)
 
 
-_shiny_app = App(app_ui, server, static_assets={"/assets": Path(__file__).parent / "www"})
+_shiny_app = App(
+    app_ui, server, static_assets={"/assets": Path(__file__).parent / "www"}
+)
 
-app = Starlette(routes=[
-    Route("/export/{job_id}/{fmt}", export_proxy),
-    Route("/nwk/static/results/{path:path}", nwk_proxy),
-    Mount("/", app=_shiny_app),
-])
+app = Starlette(
+    routes=[
+        Route("/export/{job_id}/{fmt}", export_proxy),
+        Route("/nwk/static/results/{path:path}", nwk_proxy),
+        Mount("/", app=_shiny_app),
+    ]
+)
