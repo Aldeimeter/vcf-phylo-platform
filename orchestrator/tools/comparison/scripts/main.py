@@ -127,7 +127,7 @@ def branch_length_similarity(tree1, tree2):
         if r is None:
             return {"similarity_pct": None, "reason": "zero_variance", "pairs_used": pairs_used}
         return {
-            "similarity_pct": round(max(0.0, r) * 100.0, 2),
+            "similarity_pct": round(r * 100.0, 2),
             "r": round(r, 4),
             "pairs_used": pairs_used,
         }
@@ -138,15 +138,12 @@ def branch_length_similarity(tree1, tree2):
     }
 
 
-def normalized_kf_distance(tree1, tree2):
+def weighted_rf(tree1, tree2):
     """
-    Kuhner-Felsenstein branch score on normalized branch lengths.
-    Each tree's edge lengths are divided by total tree length before computing,
-    so scale differences (e.g. FastReeR vs IQ-TREE) don't dominate the score.
-    Returns similarity as a percentage: 100% = identical branch structure, 0% = maximally different.
-    Max KF for normalized trees is sqrt(2), used to bound the similarity.
-    Note: unlike Pearson/Spearman, this penalizes topology differences too
-    (unmatched splits contribute their full normalized length to the score).
+    Weighted Robinson-Foulds distance on normalized branch lengths.
+    Shared splits contribute |w1 - w2|; unshared splits contribute their full
+    normalized length. After normalization each tree sums to 1, so max wRF = 2.
+    Similarity = (1 - wRF/2) * 100%.
     """
     t1 = copy.deepcopy(tree1)
     t2 = copy.deepcopy(tree2)
@@ -159,13 +156,25 @@ def normalized_kf_distance(tree1, tree2):
                 if e.length is not None:
                     e.length /= total
 
-    kf = dendropy.calculate.treecompare.euclidean_distance(t1, t2)
-    max_kf = math.sqrt(2)
-    similarity = max(0.0, 1.0 - kf / max_kf) * 100.0
+    t1.encode_bipartitions()
+    t2.encode_bipartitions()
+
+    def splits_dict(tree):
+        d = {}
+        for edge in tree.edges():
+            if edge.head_node is not None and edge.tail_node is not None:
+                d[edge.bipartition.split_bitmask] = edge.length if edge.length is not None else 0.0
+        return d
+
+    s1 = splits_dict(t1)
+    s2 = splits_dict(t2)
+
+    wrf = sum(abs(s1.get(sp, 0.0) - s2.get(sp, 0.0)) for sp in set(s1) | set(s2))
+    similarity = max(0.0, 1.0 - wrf / 2.0) * 100.0
 
     return {
         "similarity_pct": round(similarity, 2),
-        "kf_distance": round(kf, 4),
+        "wrf_distance": round(wrf, 4),
     }
 
 
@@ -195,29 +204,29 @@ def compare_trees(trees):
                 print(f"Branch length comparison error ({key}): {e}")
                 lengths = {"error": f"Branch length comparison failed for {key}: {e}"}
 
-            kf = None
+            wrf = None
             try:
-                kf = normalized_kf_distance(t1, t2)
+                wrf = weighted_rf(t1, t2)
             except Exception as e:
-                print(f"Normalized KF error ({key}): {e}")
-                kf = {"error": str(e)}
+                print(f"Weighted RF error ({key}): {e}")
+                wrf = {"error": str(e)}
 
             results[key] = {
                 "topology": topo,
                 "branch_lengths": lengths,
-                "normalized_kf": kf,
+                "weighted_rf": wrf,
             }
 
             if topo and "similarity_pct" in topo:
                 t_pct = topo["similarity_pct"]
                 p_pct = (lengths.get("pearson") or {}).get("similarity_pct") if lengths else None
                 s_pct = (lengths.get("spearman") or {}).get("similarity_pct") if lengths else None
-                k_pct = kf.get("similarity_pct") if kf else None
+                w_pct = wrf.get("similarity_pct") if wrf else None
                 print(
                     f"  topology: {t_pct}%"
                     f"  pearson: {p_pct if p_pct is not None else 'N/A'}%"
                     f"  spearman: {s_pct if s_pct is not None else 'N/A'}%"
-                    f"  KF: {k_pct if k_pct is not None else 'N/A'}%"
+                    f"  wRF: {w_pct if w_pct is not None else 'N/A'}%"
                 )
 
     output_path = "/results/results.json"

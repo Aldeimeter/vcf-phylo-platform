@@ -1124,10 +1124,10 @@ def server(input, output, session):
                             ),
                             ui.div(
                                 ui.span(
-                                    "Branch lengths (KF): ", style="font-weight:600;"
+                                    "Topology + branch lengths (wRF): ", style="font-weight:600;"
                                 ),
                                 ui.span(
-                                    "Kuhner-Felsenstein branch score on normalized branch lengths — measures per-branch magnitude disagreement. Unlike Pearson/Spearman, also penalizes topology differences (unmatched splits)."
+                                    "Weighted Robinson-Foulds on normalized branch lengths — shared splits contribute |w1−w2|, unshared splits their full length. 100% = identical topology and proportions."
                                 ),
                             ),
                             style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
@@ -1142,12 +1142,12 @@ def server(input, output, session):
                         lengths = metrics.get("branch_lengths") or {}
                         pearson_data = lengths.get("pearson") or {}
                         spearman_data = lengths.get("spearman") or {}
-                        kf = metrics.get("normalized_kf") or {}
+                        wrf_data = metrics.get("weighted_rf") or {}
 
                         topo_pct = topo.get("similarity_pct")
                         bl_pct = pearson_data.get("similarity_pct")
                         spearman_pct = spearman_data.get("similarity_pct")
-                        kf_pct = kf.get("similarity_pct")
+                        wrf_pct = wrf_data.get("similarity_pct")
 
                         def pct_color(pct):
                             if pct is None:
@@ -1167,7 +1167,7 @@ def server(input, output, session):
                             color = pct_color(pct)
                             return ui.div(
                                 ui.div(
-                                    style=f"width:{pct}%;background:{color};height:8px;border-radius:4px;transition:width 0.3s;",
+                                    style=f"width:{max(0, pct)}%;background:{color};height:8px;border-radius:4px;transition:width 0.3s;",
                                 ),
                                 style="background:#e9ecef;border-radius:4px;margin-top:4px;",
                             )
@@ -1246,22 +1246,22 @@ def server(input, output, session):
                             style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
                         )
 
-                        kf_block = ui.div(
+                        wrf_block = ui.div(
                             ui.span(
-                                "Branch lengths (KF)",
+                                "Topology + branch lengths (wRF)",
                                 style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
                             ),
                             ui.span(
-                                f"{kf_pct}%" if kf_pct is not None else "N/A",
-                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(kf_pct)};display:block;",
+                                f"{wrf_pct}%" if wrf_pct is not None else "N/A",
+                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(wrf_pct)};display:block;",
                             ),
-                            pct_bar(kf_pct),
+                            pct_bar(wrf_pct),
                             ui.div(
                                 ui.span(
-                                    f"d={format_number(kf['kf_distance'])}",
+                                    f"d={format_number(wrf_data['wrf_distance'])}",
                                     style="color:#6c757d;font-size:0.8em;",
                                 )
-                                if "kf_distance" in kf
+                                if "wrf_distance" in wrf_data
                                 else ui.span(""),
                                 style="margin-top:4px;",
                             ),
@@ -1279,7 +1279,7 @@ def server(input, output, session):
                                     topo_block,
                                     pearson_block,
                                     spearman_block,
-                                    kf_block,
+                                    wrf_block,
                                     style="display:flex;",
                                 ),
                                 class_="comparison-result",
