@@ -26,7 +26,12 @@ for vcfgz in /data/*.vcf.gz; do
     filename=$(basename "$vcfgz")
     echo " Processing $filename (already compressed)..."
     cp "$vcfgz" "${filename}"
-    bcftools index "${filename}"
+    if ! bcftools index "${filename}" 2>/dev/null; then
+      echo "  Unsorted, re-sorting $filename..."
+      bcftools sort "${filename}" -Oz -o "${filename}.sorted.gz"
+      mv "${filename}.sorted.gz" "${filename}"
+      bcftools index "${filename}"
+    fi
   fi
 done
 
