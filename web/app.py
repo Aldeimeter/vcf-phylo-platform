@@ -223,9 +223,13 @@ def format_number(num) -> str:
 
 
 def is_pipeline_completed(pipeline_status: Dict[str, str]) -> bool:
-    """Check if pipeline is completed"""
-    tool_order = ["merger", "iqtree", "fastreer", "mrbayes", "comparison"]
-    return all(pipeline_status.get(tool) == "completed" for tool in tool_order)
+    """Check if pipeline is completed — requires merger + comparison done and at least one inference tool done"""
+    inference_tools = ["iqtree", "fastreer", "mrbayes"]
+    required_tools = ["merger", "comparison"]
+    return (
+        all(pipeline_status.get(tool) == "completed" for tool in required_tools)
+        and any(pipeline_status.get(tool) == "completed" for tool in inference_tools)
+    )
 
 
 def is_pipeline_failed(pipeline_status: Dict[str, str]) -> bool:
@@ -605,7 +609,7 @@ def server(input, output, session):
 
                 # Load results once when job is completed; never re-fetch after that
                 if current_results_data.get() is None and (
-                    status_data.get("status") == "COMPLETED"
+                    status_data.get("status") == "completed"
                     or is_pipeline_completed(pipeline_status)
                 ):
                     results = get_job_results(job_id)
