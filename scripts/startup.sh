@@ -52,8 +52,8 @@ mkdir -p server/data/datasets server/data/results server/data/cache/merger
 success "Data directories ready"
 
 step 1 "Starting Docker registry"
-docker-compose --profile grafana down --remove-orphans 2>/dev/null || true
-docker-compose up -d registry
+docker compose --profile grafana down --remove-orphans 2>/dev/null || true
+docker compose up -d registry
 sleep 2
 success "Registry started"
 
@@ -70,11 +70,11 @@ docker build -t vcf-compressor ./server/tools/vcf-compressor || error "Failed to
 success "vcf-compressor image built"
 
 step 4 "Restarting all services with latest code"
-docker-compose --profile grafana down  # Stop existing services (including grafana if running)
+docker compose --profile grafana down  # Stop existing services (including grafana if running)
 if [ "$WITH_GRAFANA" = true ]; then
-    docker-compose --profile grafana up -d --build
+    docker compose --profile grafana up -d --build
 else
-    docker-compose up -d --build
+    docker compose up -d --build
 fi
 
 echo ""
@@ -89,4 +89,4 @@ echo "  • Grafana:  http://localhost:${GRAFANA_PORT:-3000}"
 fi
 echo ""
 echo "Container status:"
-docker-compose ps
+docker compose ps

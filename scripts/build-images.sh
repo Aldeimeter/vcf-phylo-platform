@@ -16,7 +16,7 @@ load_env
 
 echo "Building and pushing tool images"
 
-docker-compose -f docker-compose.yml -f docker-compose.build.yml up -d registry
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d registry
 sleep 2
 
 REGISTRY_PORT=${REGISTRY_PORT:-5000}
@@ -41,4 +41,4 @@ docker push localhost:${REGISTRY_PORT}/comparison
 echo "All images built and pushed"
 
 echo "Restarting registry without exposed port..."
-docker-compose up -d registry
+docker compose up -d registry

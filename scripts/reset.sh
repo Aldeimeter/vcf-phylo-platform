@@ -17,7 +17,7 @@ fi
 
 echo ""
 echo "Stopping and removing containers and volumes..."
-docker-compose --profile grafana down -v
+docker compose --profile grafana down -v
 echo "Done."
 
 echo ""

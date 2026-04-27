@@ -18,7 +18,8 @@ The **orchestrator** is a short-lived container spawned per job. It pulls tool i
 
 ## Prerequisites
 
-- Docker & Docker Compose
+- Docker Engine 20.10+
+- Docker Compose v2.0+ (the `docker compose` plugin, not the standalone `docker-compose`)
 
 ## Installation & Setup
 
@@ -128,7 +129,7 @@ Logs are stored in Loki and persist until the volume is cleared (e.g. via `./scr
 | -------------------------------------- | -------------------------------- |
 | Start all services                     | `./scripts/startup.sh`           |
 | Start with Grafana                     | `./scripts/startup.sh --grafana` |
-| Stop all services                      | `docker-compose down`            |
+| Stop all services                      | `docker compose down`            |
 | Restart                                | `./scripts/startup.sh`           |
 | Full reset (wipe all data and volumes) | `./scripts/reset.sh`             |
-| View live service logs                 | `docker-compose logs -f fastapi` |
+| View live service logs                 | `docker compose logs -f fastapi` |
