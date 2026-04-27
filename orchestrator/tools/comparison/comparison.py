@@ -1,3 +1,4 @@
+import os
 import time
 from config import Config
 
@@ -51,7 +52,9 @@ class Comparison:
             volumes = {"/results/comparison": {"bind": "/results", "mode": "rw"}}
             input_tools = ["iqtree", "fastreer", "mrbayes"]
             for tool in input_tools:
-                volumes[f"/results/{tool}"] = {"bind": f"/data/{tool}", "mode": "ro"}
+                tool_path = f"/results/{tool}"
+                if os.path.isdir(tool_path):
+                    volumes[tool_path] = {"bind": f"/data/{tool}", "mode": "ro"}
 
             self.logger.info(
                 "Starting comparison container execution",

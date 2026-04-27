@@ -795,7 +795,7 @@ def server(input, output, session):
             ),
             (
                 "Comparison",
-                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using Robinson-Foulds (RF) distance metrics.",
+                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using topology (RF, weighted RF) and branch-length similarity (Pearson, Spearman) metrics.",
             ),
         ]
 
