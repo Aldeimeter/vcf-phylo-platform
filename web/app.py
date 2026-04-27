@@ -1,3 +1,4 @@
+import asyncio
 import requests
 import os
 from pathlib import Path
@@ -434,6 +435,21 @@ def app_ui(request: Request):
                     // Try setup immediately in case container already exists
                     setTimeout(setupLogScrollBehavior, 100);
                 });
+
+                // Immediately disable upload button and show spinner on click
+                document.addEventListener('click', function(e) {
+                    const btn = e.target.closest('#upload_btn');
+                    if (!btn || btn.disabled) return;
+                    btn.disabled = true;
+                    const container = btn.closest('#upload_btn_output') || btn.parentElement;
+                    if (!container.querySelector('.upload-progress')) {
+                        const spinner = document.createElement('div');
+                        spinner.className = 'upload-progress d-flex align-items-center text-muted mt-2';
+                        spinner.style.fontSize = '0.85em';
+                        spinner.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span><span>Compressing and uploading...</span>';
+                        btn.insertAdjacentElement('afterend', spinner);
+                    }
+                });
             """),
             ui.tags.script(src="https://d3js.org/d3.v7.min.js"),
             ui.tags.script(
@@ -520,9 +536,22 @@ def server(input, output, session):
             files_ready = bool(input.upload_files())
         except Exception:
             files_ready = False
-        disabled = not files_ready or uploading_dataset.get() is not None
+        is_uploading = uploading_dataset.get() is not None
+        disabled = not files_ready or is_uploading
+        if is_uploading:
+            return ui.div(
+                ui.input_action_button(
+                    "upload_btn", "Confirm Upload", class_="btn btn-success mt-1", disabled=True
+                ),
+                ui.div(
+                    ui.span(class_="spinner-border spinner-border-sm me-2", role="status"),
+                    ui.span("Compressing and uploading..."),
+                    class_="d-flex align-items-center text-muted mt-2",
+                    style="font-size: 0.85em;",
+                ),
+            )
         return ui.input_action_button(
-            "upload_btn", "Upload", class_="btn btn-primary mt-1", disabled=disabled
+            "upload_btn", "Confirm Upload", class_="btn btn-success mt-1", disabled=disabled
         )
 
     # Load initial data
@@ -1292,7 +1321,7 @@ def server(input, output, session):
     # Handle dataset upload
     @reactive.effect
     @reactive.event(input.upload_btn)
-    def handle_upload():
+    async def handle_upload():
         try:
             name = input.upload_dataset_name().strip()
             files = input.upload_files()
@@ -1312,15 +1341,17 @@ def server(input, output, session):
                 upload_error.set(err)
                 return
 
-            success, error = upload_dataset(name, files)
+            uploading_dataset.set(name)
+            success, error = await asyncio.to_thread(upload_dataset, name, files)
             if success:
                 upload_message.set("")
-                uploading_dataset.set(name)
             else:
+                uploading_dataset.set(None)
                 upload_error.set(error)
         except KeyError:
             pass  # Input doesn't exist on this page
         except Exception as e:
+            uploading_dataset.set(None)
             upload_error.set(f"Unexpected error: {e}")
 
     # Handle dataset selection
