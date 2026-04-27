@@ -20,6 +20,8 @@ The **orchestrator** is a short-lived container spawned per job. It pulls tool i
 
 - Docker Engine 20.10+
 - Docker Compose v2.0+ (the `docker compose` plugin, not the standalone `docker-compose`)
+- 20 GB free disk space (Docker images + build cache take ~12 GB)
+- 2 GB RAM minimum (4 GB recommended — IQ-TREE, FastReer, and MrBayes run in parallel)
 
 ## Installation & Setup
 
