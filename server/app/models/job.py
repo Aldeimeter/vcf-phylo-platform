@@ -21,11 +21,11 @@ class ToolStatuses(str, Enum):
 
 
 class ToolsTiming(BaseModel):
-    merger: float = None
-    iqtree: float = None
-    fastreer: float = None
-    mrbayes: float = None
-    comparison: float = None
+    merger: Optional[float] = None
+    iqtree: Optional[float] = None
+    fastreer: Optional[float] = None
+    mrbayes: Optional[float] = None
+    comparison: Optional[float] = None
 
 
 class PipelineStatus(BaseModel):
