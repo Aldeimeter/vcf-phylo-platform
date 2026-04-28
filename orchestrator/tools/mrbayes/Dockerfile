@@ -4,7 +4,7 @@ RUN apk add --no-cache git
 
 WORKDIR /tmp
 
-RUN git clone https://github.com/edgardomortiz/vcf2phylip.git
+RUN git clone --depth=1 --branch v2.8 https://github.com/edgardomortiz/vcf2phylip.git
 
 # Stage: Build MrBayes
 FROM alpine:3.22 AS mrbayes-build
@@ -18,7 +18,7 @@ RUN apk add --no-cache \
 
 WORKDIR /tmp
 
-RUN git clone --depth=1 https://github.com/NBISweden/MrBayes.git
+RUN git clone --depth=1 --branch v3.2.7 https://github.com/NBISweden/MrBayes.git
 
 WORKDIR /tmp/MrBayes
 

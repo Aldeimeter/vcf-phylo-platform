@@ -15,7 +15,7 @@ RUN apk add --no-cache git
 
 WORKDIR /tmp
 
-RUN git clone https://github.com/edgardomortiz/vcf2phylip.git
+RUN git clone --depth=1 --branch v2.8 https://github.com/edgardomortiz/vcf2phylip.git
 
 FROM python:3.13.9-alpine3.22 AS final
 

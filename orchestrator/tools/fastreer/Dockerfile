@@ -8,7 +8,7 @@ RUN apk add --no-cache \
     bash
 
 # Install fastreeR and ete4 for tree manipulation and rooting
-RUN pip install --no-cache-dir fastreer ete4
+RUN pip install --no-cache-dir fastreer==2.1.6 ete4==4.4.0
 
 # Clean up build dependencies to reduce image size
 RUN apk del gcc musl-dev
