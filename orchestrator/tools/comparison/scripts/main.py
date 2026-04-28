@@ -95,9 +95,9 @@ def spearman(x, y):
 
 def branch_length_similarity(tree1, tree2):
     """
-    Returns Pearson and Spearman correlations of normalized patristic distance
-    matrices. Normalization by total sum makes both metrics scale-independent
-    (handles FastReer's cosine dissimilarity vs IQ-TREE/MrBayes substitution units).
+    Returns Pearson and Spearman correlations of patristic distances.
+    Both metrics are scale-invariant (invariant to linear/monotonic scaling),
+    so no normalization is needed across tools with different branch length units.
     Pearson measures linear proportionality; Spearman measures monotonic agreement
     and is more robust to skewed branch length distributions.
     100% = perfect agreement, 0% = no correlation.
@@ -112,14 +112,6 @@ def branch_length_similarity(tree1, tree2):
 
     v1 = [d1[k] for k in common_pairs]
     v2 = [d2[k] for k in common_pairs]
-
-    # Normalize by total sum so scale differences don't affect the result
-    sum1 = sum(v1)
-    sum2 = sum(v2)
-    if sum1 > 0:
-        v1 = [x / sum1 for x in v1]
-    if sum2 > 0:
-        v2 = [x / sum2 for x in v2]
 
     pairs_used = len(common_pairs)
 
