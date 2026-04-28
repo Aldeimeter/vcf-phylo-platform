@@ -974,6 +974,10 @@ def server(input, output, session):
         dataset_id = job_data.get("dataset_id", "Unknown")
         pipeline_status = job_data.get("pipeline_status", {})
         current_stage = get_current_pipeline_stage(pipeline_status)
+        pipeline_config = job_data.get("pipeline_config") or {}
+        iqtree_seed = pipeline_config.get("iqtree_seed", 12345)
+        mrbayes_seed = pipeline_config.get("mrbayes_seed", 12345)
+        mrbayes_swapseed = pipeline_config.get("mrbayes_swapseed", 54321)
 
         # Pipeline status list
         tool_order = ["merger", "iqtree", "fastreer", "mrbayes", "comparison"]
@@ -1016,6 +1020,15 @@ def server(input, output, session):
                     [
                         ui.span("Stage: ", style="color:#64748b;font-size:.85em;"),
                         ui.span(current_stage, style="font-size:.85em;"),
+                    ]
+                ),
+                ui.p(
+                    [
+                        ui.span("Seeds: ", style="color:#64748b;font-size:.85em;"),
+                        ui.span(
+                            f"IQ-TREE={iqtree_seed}  MrBayes={mrbayes_seed}  swapseed={mrbayes_swapseed}",
+                            style="font-family:monospace;font-size:.85em;",
+                        ),
                     ]
                 ),
                 style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;margin-bottom:1rem;",
@@ -1182,6 +1195,8 @@ def server(input, output, session):
                         spearman_pct = spearman_data.get("similarity_pct")
                         wrf_pct = wrf_data.get("similarity_pct")
 
+                        low_topo = topo_pct is not None and topo_pct < 50
+
                         def pct_color(pct):
                             if pct is None:
                                 return "#6c757d"
@@ -1301,6 +1316,33 @@ def server(input, output, session):
                             style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
                         )
 
+                        if low_topo:
+                            branch_blocks = ui.div(
+                                ui.div(
+                                    pearson_block,
+                                    spearman_block,
+                                    wrf_block,
+                                    style="display:flex;filter:blur(4px);user-select:none;",
+                                ),
+                                ui.div(
+                                    "⚠ Topology similarity below 50% — branch length metrics are unreliable. ",
+                                    ui.span(
+                                        "Reveal anyway",
+                                        style="text-decoration:underline;cursor:pointer;",
+                                    ),
+                                    style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,249,250,0.80);font-size:0.82em;color:#92400e;font-weight:600;cursor:pointer;padding:0 12px;text-align:center;",
+                                    **{"onclick": "var w=this.parentElement;w.children[0].style.filter='none';w.children[0].style.userSelect='';this.remove();"},
+                                ),
+                                style="position:relative;flex:3;display:flex;flex-direction:column;",
+                            )
+                        else:
+                            branch_blocks = ui.div(
+                                pearson_block,
+                                spearman_block,
+                                wrf_block,
+                                style="display:flex;flex:3;",
+                            )
+
                         content.append(
                             ui.div(
                                 ui.div(
@@ -1310,9 +1352,7 @@ def server(input, output, session):
                                 ),
                                 ui.div(
                                     topo_block,
-                                    pearson_block,
-                                    spearman_block,
-                                    wrf_block,
+                                    branch_blocks,
                                     style="display:flex;",
                                 ),
                                 class_="comparison-result",
