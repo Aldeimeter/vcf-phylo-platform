@@ -4,6 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 echo "This will:"
+echo "  - Stop all running jobs (orchestrator and tool containers)"
 echo "  - Stop and remove all containers"
 echo "  - Delete all Docker volumes (MongoDB, Loki)"
 echo "  - Clear all job results"
@@ -14,6 +15,12 @@ if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
     echo "Aborted."
     exit 0
 fi
+
+echo ""
+echo "Stopping running job containers..."
+docker ps -q --filter "ancestor=orchestrator:latest" | xargs -r docker stop
+docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /^registry:[0-9]+\// {print $1}' | xargs -r docker stop
+echo "Done."
 
 echo ""
 echo "Stopping and removing containers and volumes..."
