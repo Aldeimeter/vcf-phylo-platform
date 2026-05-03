@@ -1,17 +1,12 @@
 FROM python:3.13.9-alpine3.22 AS final
 
-# Install build dependencies for ete4, runtime dependencies, and Java
+# Install Java runtime and bash
 RUN apk add --no-cache \
-    gcc \
-    musl-dev \
     openjdk21-jre \
     bash
 
-# Install fastreeR and ete4 for tree manipulation and rooting
-RUN pip install --no-cache-dir fastreer==2.1.6 ete4==4.4.0
-
-# Clean up build dependencies to reduce image size
-RUN apk del gcc musl-dev
+# Install fastreeR
+RUN pip install --no-cache-dir fastreer==2.1.6
 
 # Verify installation
 RUN python -c "import fastreeR; print('fastreeR installed successfully')" || \
