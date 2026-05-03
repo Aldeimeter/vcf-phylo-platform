@@ -81,7 +81,7 @@ If you overrode any ports in `.env`, replace the default port accordingly.
 
 ## Datasets
 
-Datasets are read from the `server/data/datasets/` directory. Each subfolder is one dataset. The pipeline requires **at least 3 VCF files** per dataset — one per sample — to produce meaningful phylogenetic trees. Both `.vcf` and `.vcf.gz` files are accepted.
+Datasets are read from the `server/data/datasets/` directory. Each subfolder is one dataset. The pipeline requires **at least 4 VCF files** per dataset — one per tumor region — to produce meaningful phylogenetic trees. Both `.vcf` and `.vcf.gz` files are accepted.
 
 **Adding a dataset — via the frontend (recommended):**
 
@@ -93,7 +93,7 @@ Use the upload form on the **Datasets** page to create a new dataset and upload 
    ```
    server/data/datasets/<dataset_name>/
    ```
-2. Place **at least 3** `.vcf` or `.vcf.gz` files inside it (one per sample):
+2. Place **at least 4** `.vcf` or `.vcf.gz` files inside it (one per tumor region):
    ```
    server/data/datasets/my_cohort/sample1.vcf
    server/data/datasets/my_cohort/sample2.vcf.gz
@@ -105,7 +105,7 @@ Example directory structure:
 
 ![Dataset directory structure](docs/datasets-example.png)
 
-> Folders with fewer than 3 VCF files are shown in the frontend with a warning and cannot be submitted for analysis. Folders with no VCF files are ignored entirely. Both `.vcf` and `.vcf.gz` files count toward the minimum.
+> Folders with fewer than 4 VCF files are shown in the frontend with a warning and cannot be submitted for analysis. Folders with no VCF files are ignored entirely. Both `.vcf` and `.vcf.gz` files count toward the minimum.
 
 ## Usage
 

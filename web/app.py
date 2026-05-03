@@ -541,6 +541,7 @@ def server(input, output, session):
         except Exception:
             files_ready = False
         is_uploading = uploading_dataset.get() is not None
+        upload_error.get()  # re-render when a validation error occurs so JS spinner is cleared
         disabled = not files_ready or is_uploading
         if is_uploading:
             return ui.div(
@@ -557,6 +558,23 @@ def server(input, output, session):
         return ui.input_action_button(
             "upload_btn", "Confirm Upload", class_="btn btn-success mt-1", disabled=disabled
         )
+
+    @render.ui
+    def upload_feedback_display():
+        uploading_ds = uploading_dataset.get()
+        u_err = upload_error.get()
+        u_msg = upload_message.get()
+        if uploading_ds:
+            return ui.div(
+                ui.tags.span(class_="spinner-border spinner-border-sm me-2"),
+                f"Compressing files for '{uploading_ds}'...",
+                class_="alert alert-info mt-2",
+            )
+        if u_err:
+            return ui.div(u_err, class_="alert alert-danger mt-2")
+        if u_msg:
+            return ui.div(u_msg, class_="alert alert-success mt-2")
+        return ui.div()
 
     # Load initial data
     @reactive.effect
@@ -683,25 +701,8 @@ def server(input, output, session):
     def render_analysis_page():
         datasets = datasets_list.get()
         error = error_message.get()
-        u_msg = upload_message.get()
-        u_err = upload_error.get()
-        uploading_ds = uploading_dataset.get()
 
         error_ui = ui.div(error, class_="error-message") if error else None
-
-        upload_feedback = None
-        if uploading_ds:
-            upload_feedback = ui.div(
-                ui.tags.span(class_="spinner-border spinner-border-sm me-2"),
-                f"Compressing files for '{uploading_ds}'...",
-                class_="alert alert-info mt-2",
-            )
-        elif u_err:
-            upload_feedback = ui.div(u_err, class_="alert alert-danger mt-2")
-        elif u_msg:
-            upload_feedback = ui.div(u_msg, class_="alert alert-success mt-2")
-
-        collapse_class = "collapse show" if u_err else "collapse"
 
         upload_section = ui.div(
             ui.tags.button(
@@ -710,7 +711,7 @@ def server(input, output, session):
                 class_="btn btn-outline-secondary mb-2",
                 type="button",
             ),
-            upload_feedback,
+            ui.output_ui("upload_feedback_display"),
             ui.div(
                 ui.input_text(
                     "upload_dataset_name",
@@ -735,7 +736,7 @@ def server(input, output, session):
                 ),
                 ui.output_ui("upload_btn_output"),
                 id="upload-collapse",
-                class_=f"upload-card {collapse_class}",
+                class_="upload-card collapse",
             ),
         )
 
@@ -751,8 +752,8 @@ def server(input, output, session):
             for d in datasets:
                 label = (
                     d["name"]
-                    if d["vcf_count"] >= 3
-                    else f"{d['name']} ({d['vcf_count']} file{'s' if d['vcf_count'] != 1 else ''} — need at least 3)"
+                    if d["vcf_count"] >= 4
+                    else f"{d['name']} ({d['vcf_count']} file{'s' if d['vcf_count'] != 1 else ''} — need at least 4)"
                 )
                 choices_dict[d["name"]] = label
 
@@ -762,10 +763,10 @@ def server(input, output, session):
             )
             insufficient_warning = (
                 ui.div(
-                    f"This dataset only has {selected_ds['vcf_count']} VCF file{'s' if selected_ds['vcf_count'] != 1 else ''}. At least 3 are required for the pipeline.",
+                    f"This dataset only has {selected_ds['vcf_count']} VCF file{'s' if selected_ds['vcf_count'] != 1 else ''}. At least 4 are required for the pipeline.",
                     class_="alert alert-warning mt-2",
                 )
-                if selected_ds and selected_ds["vcf_count"] < 3
+                if selected_ds and selected_ds["vcf_count"] < 4
                 else None
             )
 
@@ -1377,7 +1378,10 @@ def server(input, output, session):
                 upload_error.set("Please enter a dataset name.")
                 return
             if not files:
-                upload_error.set("Please select at least one VCF file.")
+                upload_error.set("Please select at least 4 VCF files.")
+                return
+            if len(files) < 4:
+                upload_error.set(f"At least 4 VCF files are required, but only {len(files)} were selected.")
                 return
 
             err = validate_dataset_name(name)
@@ -1422,9 +1426,9 @@ def server(input, output, session):
 
         datasets = datasets_list.get() or []
         selected_ds = next((d for d in datasets if d["name"] == dataset), None)
-        if selected_ds and selected_ds["vcf_count"] < 3:
+        if selected_ds and selected_ds["vcf_count"] < 4:
             error_message.set(
-                f"Dataset '{dataset}' has only {selected_ds['vcf_count']} VCF file(s). At least 3 are required."
+                f"Dataset '{dataset}' has only {selected_ds['vcf_count']} VCF file(s). At least 4 are required."
             )
             return
 

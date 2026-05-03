@@ -103,6 +103,12 @@ async def upload_dataset(
 
     _validate_name(name)
 
+    if len(files) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At least 4 VCF files are required, but only {len(files)} were provided.",
+        )
+
     for f in files:
         if not (f.filename.endswith(".vcf") or f.filename.endswith(".vcf.gz")):
             raise HTTPException(
