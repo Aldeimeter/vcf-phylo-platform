@@ -62,12 +62,13 @@ class IqTree:
             )
             
             container_start = time.time()
+            container = None
             try:
                 env = {}
                 if self.config and self.config.iqtree_seed is not None:
                     env["IQTREE_SEED"] = str(self.config.iqtree_seed)
 
-                result = self.docker_client.containers.run(
+                container = self.docker_client.containers.run(
                     image=self.image_name,
                     command=["sh", "/app/run-iqtree.sh"],
                     volumes={
@@ -75,10 +76,19 @@ class IqTree:
                         "/results/iqtree": {"bind": "/results", "mode": "rw"},
                     },
                     environment=env,
-                    remove=True,
-                    detach=False,
+                    detach=True,
                 )
+                for log_line in container.logs(stream=True, follow=True):
+                    line = log_line.decode("utf-8", errors="replace").strip()
+                    if line:
+                        self.logger.info(line, extra={"tags": {"service": "iqtree"}})
+                exit_code = container.wait()["StatusCode"]
                 container_time = round(time.time() - container_start, 2)
+                if exit_code != 0:
+                    raise Exception(
+                        f"Command '['sh', '/app/run-iqtree.sh']' in image '{self.image_name}' "
+                        f"returned non-zero exit status {exit_code}"
+                    )
                 self.logger.info(
                     f"IQ-TREE container execution completed in {container_time}s",
                     extra={
@@ -100,6 +110,9 @@ class IqTree:
                     }
                 )
                 raise
+            finally:
+                if container:
+                    container.remove(force=True)
                 
             return True
         except Exception as e:

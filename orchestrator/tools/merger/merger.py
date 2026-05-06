@@ -159,7 +159,7 @@ class Merger:
                 for log_line in container.logs(stream=True, follow=True):
                     line = log_line.decode("utf-8", errors="replace").strip()
                     if line:
-                        self.logger.info(line, extra={"tool": "merger", "pipeline_stage": "container_stdout"})
+                        self.logger.info(line, extra={"tags": {"service": "merger"}})
                 exit_code = container.wait()["StatusCode"]
                 container_time = round(time.time() - container_start, 2)
                 if exit_code != 0:

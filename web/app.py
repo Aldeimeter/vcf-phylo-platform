@@ -174,10 +174,13 @@ def get_all_jobs(
         return []
 
 
-def get_job_logs(job_id: str) -> List[Dict[str, Any]]:
-    """Get logs for a specific job"""
+def get_job_logs(job_id: str, service: str | None = None) -> List[Dict[str, Any]]:
+    """Get logs for a specific job, optionally filtered by service"""
     try:
-        response = requests.get(f"{BACKEND_URL}/logs/{job_id}/history")
+        params = {}
+        if service:
+            params["service"] = service
+        response = requests.get(f"{BACKEND_URL}/logs/{job_id}/history", params=params)
         if response.status_code == 200:
             return response.json().get("logs", [])
         return []
@@ -186,14 +189,11 @@ def get_job_logs(job_id: str) -> List[Dict[str, Any]]:
         return []
 
 
-def format_log_entry(log: Dict[str, Any]) -> str:
-    """Format a single log entry for display"""
+def format_log_entry(log: Dict[str, Any], show_service: bool = False) -> str:
     try:
         timestamp = log.get("timestamp", "")
         if "T" in timestamp:
-            # Convert ISO format to just time
             from datetime import datetime
-
             dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             time_str = dt.strftime("%H:%M:%S")
         else:
@@ -201,6 +201,9 @@ def format_log_entry(log: Dict[str, Any]) -> str:
 
         message = log.get("message", "")
 
+        if show_service:
+            service = log.get("labels", {}).get("service", "")
+            return f"{time_str} [{service}] {message}"
         return f"{time_str} {message}"
     except Exception as e:
         return f"[Error formatting log: {e}]"
@@ -383,6 +386,11 @@ def app_ui(request: Request):
                 h3 { font-size: 1.05rem; font-weight: 600; color: #374151; margin-bottom: .6rem; }
                 h4 { font-size: .95rem; font-weight: 600; color: #374151; margin-bottom: .5rem; }
                 hr { border-color: #e2e8f0; margin: 1.5rem 0; }
+
+                /* Log tabs */
+                .nav-tabs .nav-link { color: #64748b; }
+                .nav-tabs .nav-link:hover { color: #1e293b; }
+                .nav-tabs .nav-link.active { color: #1e293b; font-weight: 600; }
             """),
             ui.tags.script("""
                 function redirectToJob(jobId) {
@@ -390,54 +398,42 @@ def app_ui(request: Request):
                 }
                 
                 // Log scroll preservation with MutationObserver
-                let userScrolledUp = false;
-                let logContainer = null;
-                
-                function setupLogScrollBehavior() {
-                    logContainer = document.getElementById('log-container');
-                    if (!logContainer) return;
-                    
-                    // Track user scroll behavior
-                    logContainer.addEventListener('scroll', function() {
+                function setupLogScrollBehavior(container) {
+                    if (!container || container.hasLogSetup) return;
+                    container.hasLogSetup = true;
+
+                    container.addEventListener('scroll', function() {
                         const isAtBottom = this.scrollHeight - this.scrollTop - this.clientHeight < 50;
-                        userScrolledUp = !isAtBottom;
+                        this._userScrolledUp = !isAtBottom;
                     });
-                    
-                    // Monitor for content changes in the log container
-                    const logObserver = new MutationObserver(function(mutations) {
-                        mutations.forEach(function(mutation) {
-                            if (mutation.type === 'childList' || mutation.type === 'subtree') {
-                                // Check if user was at bottom before content changed
-                                setTimeout(function() {
-                                    if (logContainer && !userScrolledUp) {
-                                        logContainer.scrollTop = logContainer.scrollHeight;
-                                    }
-                                }, 10);
+
+                    const logObserver = new MutationObserver(function() {
+                        setTimeout(function() {
+                            if (!container._userScrolledUp) {
+                                container.scrollTop = container.scrollHeight;
                             }
-                        });
+                        }, 10);
                     });
-                    
-                    logObserver.observe(logContainer, {
+
+                    logObserver.observe(container, {
                         childList: true,
                         subtree: true,
                         characterData: true
                     });
                 }
-                
+
                 // Setup when page loads
                 document.addEventListener('DOMContentLoaded', function() {
-                    // Use MutationObserver to detect when log container is added to DOM
-                    const pageObserver = new MutationObserver(function(mutations) {
-                        const container = document.getElementById('log-container');
-                        if (container && !container.hasLogSetup) {
-                            container.hasLogSetup = true;
-                            setupLogScrollBehavior();
-                        }
+                    const pageObserver = new MutationObserver(function() {
+                        document.querySelectorAll('.log-container').forEach(function(c) {
+                            setupLogScrollBehavior(c);
+                        });
                     });
                     pageObserver.observe(document.body, { childList: true, subtree: true });
 
-                    // Try setup immediately in case container already exists
-                    setTimeout(setupLogScrollBehavior, 100);
+                    document.querySelectorAll('.log-container').forEach(function(c) {
+                        setupLogScrollBehavior(c);
+                    });
                 });
 
                 // Immediately disable upload button and show spinner on click
@@ -502,9 +498,11 @@ def server(input, output, session):
     # Filter state
     jobs_filter_dataset = reactive.value("")
     jobs_sort_order = reactive.value("desc")
-    # Logs data
-    current_logs = reactive.value("")
-    logs_last_seen_timestamp = reactive.value(0)
+    # Logs data (one per service tab)
+    logs_orchestrator = reactive.value("")
+    logs_iqtree = reactive.value("")
+    logs_fastreer = reactive.value("")
+    logs_mrbayes = reactive.value("")
     # Upload state
     upload_message = reactive.value("")
     upload_error = reactive.value("")
@@ -644,34 +642,30 @@ def server(input, output, session):
         job_id = input.current_job_id()
         page = input.current_page()
 
-        # Only poll logs when on a job page
         if page != "job" or not job_id:
-            current_logs.set("")
+            logs_orchestrator.set("")
+            logs_iqtree.set("")
+            logs_fastreer.set("")
+            logs_mrbayes.set("")
             return
 
-        # Poll every 2 seconds
         reactive.invalidate_later(POLL_INTERVAL)
 
-        try:
-            logs = get_job_logs(job_id)
-            if logs:
-                # Format logs for display (chronological order)
-                formatted_logs = []
-                for log in logs:
-                    formatted_logs.append(format_log_entry(log))
-
-                log_text = "\n".join(formatted_logs)
-
-                # Only update if content has actually changed
-                if log_text != current_logs.get():
-                    current_logs.set(log_text)
-            else:
-                if current_logs.get() != "No logs available yet...":
-                    current_logs.set("No logs available yet...")
-        except Exception as e:
-            error_msg = f"Error loading logs: {e}"
-            if current_logs.get() != error_msg:
-                current_logs.set(error_msg)
+        for service, state, show_service in [
+            ("orchestrator|merger", logs_orchestrator, True),
+            ("iqtree", logs_iqtree, False),
+            ("fastreer", logs_fastreer, False),
+            ("mrbayes", logs_mrbayes, False),
+        ]:
+            try:
+                logs = get_job_logs(job_id, service=service)
+                log_text = "\n".join(format_log_entry(l, show_service=show_service) for l in logs) if logs else "No logs yet..."
+                if log_text != state.get():
+                    state.set(log_text)
+            except Exception as e:
+                error_msg = f"Error loading logs: {e}"
+                if state.get() != error_msg:
+                    state.set(error_msg)
 
     # Main page content router
     @render.ui
@@ -681,7 +675,10 @@ def server(input, output, session):
 
         # Clear state when navigating away from job pages
         if page != "job":
-            current_logs.set("")
+            logs_orchestrator.set("")
+            logs_iqtree.set("")
+            logs_fastreer.set("")
+            logs_mrbayes.set("")
             current_job_data.set(None)
             current_results_data.set(None)
 
@@ -1042,13 +1039,16 @@ def server(input, output, session):
         ]
 
         # Add logs section
+        log_style = "height: 380px; overflow-y: auto; background: #f8fafc; color: #374151; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 0 0 8px 8px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12.5px; line-height: 1.5; scrollbar-width: none; -ms-overflow-style: none;"
         content.append(ui.hr())
         content.append(ui.h3("Logs"))
         content.append(
-            ui.div(
-                ui.output_text_verbatim("job_logs"),
-                id="log-container",
-                style="height: 380px; overflow-y: auto; background: #f8fafc; color: #374151; padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 8px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; font-size: 12.5px; line-height: 1.5; scrollbar-width: none; -ms-overflow-style: none;",
+            ui.navset_tab(
+                ui.nav_panel("Global", ui.div(ui.output_text_verbatim("job_logs_orchestrator"), class_="log-container", style=log_style)),
+                ui.nav_panel("IQ-TREE", ui.div(ui.output_text_verbatim("job_logs_iqtree"), class_="log-container", style=log_style)),
+                ui.nav_panel("FastReeR", ui.div(ui.output_text_verbatim("job_logs_fastreer"), class_="log-container", style=log_style)),
+                ui.nav_panel("MrBayes", ui.div(ui.output_text_verbatim("job_logs_mrbayes"), class_="log-container", style=log_style)),
+                id="log_tabs",
             )
         )
 
@@ -1483,8 +1483,20 @@ def server(input, output, session):
 
     # Render logs output
     @render.text
-    def job_logs():
-        return current_logs.get()
+    def job_logs_orchestrator():
+        return logs_orchestrator.get()
+
+    @render.text
+    def job_logs_iqtree():
+        return logs_iqtree.get()
+
+    @render.text
+    def job_logs_fastreer():
+        return logs_fastreer.get()
+
+    @render.text
+    def job_logs_mrbayes():
+        return logs_mrbayes.get()
 
 
 # Export proxy — browser hits /export/{job_id}/{fmt}, frontend fetches from FastAPI

@@ -61,18 +61,28 @@ class FastreeR:
             )
             
             container_start = time.time()
+            container = None
             try:
-                result = self.docker_client.containers.run(
+                container = self.docker_client.containers.run(
                     image=self.image_name,
                     command=["sh", "/app/run-fastreer.sh"],
                     volumes={
                         "/results/merger": {"bind": "/data", "mode": "ro"},
                         "/results/fastreer": {"bind": "/results", "mode": "rw"},
                     },
-                    remove=True,
-                    detach=False,
+                    detach=True,
                 )
+                for log_line in container.logs(stream=True, follow=True):
+                    line = log_line.decode("utf-8", errors="replace").strip()
+                    if line:
+                        self.logger.info(line, extra={"tags": {"service": "fastreer"}})
+                exit_code = container.wait()["StatusCode"]
                 container_time = round(time.time() - container_start, 2)
+                if exit_code != 0:
+                    raise Exception(
+                        f"Command '['sh', '/app/run-fastreer.sh']' in image '{self.image_name}' "
+                        f"returned non-zero exit status {exit_code}"
+                    )
                 self.logger.info(
                     f"FastreeR container execution completed in {container_time}s",
                     extra={
@@ -94,6 +104,9 @@ class FastreeR:
                     }
                 )
                 raise
+            finally:
+                if container:
+                    container.remove(force=True)
                 
             return True
         except Exception as e:

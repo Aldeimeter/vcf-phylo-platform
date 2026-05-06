@@ -8,14 +8,14 @@ from app.services.job_storage import job_storage
 router = APIRouter(prefix="/logs", tags=["logs"])
 
 @router.get("/{job_id}/history")
-async def get_job_logs(job_id: str, limit: int = 1000):
-    """Get historical logs for a job"""
+async def get_job_logs(job_id: str, limit: int = 1000, service: str | None = None):
+    """Get historical logs for a job, optionally filtered by service"""
     job = await job_storage.get_job(job_id)
     start_time = job.created_at if job else None
-    logs = await get_historical_logs(job_id, limit, start_time=start_time)
+    logs = await get_historical_logs(job_id, limit, start_time=start_time, service=service)
     return {"job_id": job_id, "logs": logs, "count": len(logs)}
 
-async def get_historical_logs(job_id: str, limit: int = 1000, start_time: datetime | None = None):
+async def get_historical_logs(job_id: str, limit: int = 1000, start_time: datetime | None = None, service: str | None = None):
     """Query Loki for historical logs"""
     loki_url = os.environ.get("LOKI_URL", "http://loki:3100")
 
@@ -24,8 +24,12 @@ async def get_historical_logs(job_id: str, limit: int = 1000, start_time: dateti
         start_time = now - timedelta(hours=1)
     start_ns = int(start_time.timestamp() * 1_000_000_000)
     end_ns = int(now.timestamp() * 1_000_000_000)
-    
-    query = f'{{job_id="{job_id}"}}'
+
+    if service:
+        op = "=~" if "|" in service else "="
+        query = f'{{job_id="{job_id}", service{op}"{service}"}}'
+    else:
+        query = f'{{job_id="{job_id}"}}'
     
     try:
         response = requests.get(

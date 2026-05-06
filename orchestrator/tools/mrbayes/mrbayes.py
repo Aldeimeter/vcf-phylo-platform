@@ -62,6 +62,7 @@ class MrBayes:
             )
             
             container_start = time.time()
+            container = None
             try:
                 env = {}
                 if self.config and self.config.mrbayes_seed is not None:
@@ -69,7 +70,7 @@ class MrBayes:
                 if self.config and self.config.mrbayes_swapseed is not None:
                     env["MRBAYES_SWAPSEED"] = str(self.config.mrbayes_swapseed)
 
-                result = self.docker_client.containers.run(
+                container = self.docker_client.containers.run(
                     image=self.image_name,
                     command=["sh", "/app/run-mrbayes.sh"],
                     volumes={
@@ -77,10 +78,19 @@ class MrBayes:
                         "/results/mrbayes": {"bind": "/results", "mode": "rw"},
                     },
                     environment=env,
-                    remove=True,
-                    detach=False,
+                    detach=True,
                 )
+                for log_line in container.logs(stream=True, follow=True):
+                    line = log_line.decode("utf-8", errors="replace").strip()
+                    if line:
+                        self.logger.info(line, extra={"tags": {"service": "mrbayes"}})
+                exit_code = container.wait()["StatusCode"]
                 container_time = round(time.time() - container_start, 2)
+                if exit_code != 0:
+                    raise Exception(
+                        f"Command '['sh', '/app/run-mrbayes.sh']' in image '{self.image_name}' "
+                        f"returned non-zero exit status {exit_code}"
+                    )
                 self.logger.info(
                     f"MrBayes container execution completed in {container_time}s",
                     extra={
@@ -102,6 +112,9 @@ class MrBayes:
                     }
                 )
                 raise
+            finally:
+                if container:
+                    container.remove(force=True)
                 
             return True
         except Exception as e:
