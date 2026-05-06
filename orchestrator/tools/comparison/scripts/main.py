@@ -85,10 +85,18 @@ def pearson(x, y):
 
 def spearman(x, y):
     def ranks(lst):
-        order = sorted(range(len(lst)), key=lambda i: lst[i])
-        r = [0.0] * len(lst)
-        for rank, idx in enumerate(order):
-            r[idx] = rank + 1.0
+        n = len(lst)
+        order = sorted(range(n), key=lambda i: lst[i])
+        r = [0.0] * n
+        i = 0
+        while i < n:
+            j = i
+            while j < n and lst[order[j]] == lst[order[i]]:
+                j += 1
+            avg = (i + j + 1) / 2.0
+            for k in range(i, j):
+                r[order[k]] = avg
+            i = j
         return r
     return pearson(ranks(x), ranks(y))
 
