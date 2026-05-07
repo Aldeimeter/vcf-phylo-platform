@@ -20,6 +20,7 @@ class JobConfig:
     iqtree_seed: int = IQTREE_SEED_DEFAULT
     mrbayes_seed: int = MRBAYES_SEED_DEFAULT
     mrbayes_swapseed: int = MRBAYES_SWAPSEED_DEFAULT
+    dataset_name: str = ""
 
     @staticmethod
     def from_env() -> "JobConfig":
@@ -31,6 +32,7 @@ class JobConfig:
             iqtree_seed=parse_int("IQTREE_SEED", IQTREE_SEED_DEFAULT),
             mrbayes_seed=parse_int("MRBAYES_SEED", MRBAYES_SEED_DEFAULT),
             mrbayes_swapseed=parse_int("MRBAYES_SWAPSEED", MRBAYES_SWAPSEED_DEFAULT),
+            dataset_name=os.environ.get("DATASET_NAME", ""),
         )
 
     def to_dict(self) -> dict:

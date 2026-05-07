@@ -7,6 +7,7 @@ class Comparison:
     def __init__(self, docker_client, logger, config=None):
         self.docker_client = docker_client
         self.logger = logger
+        self.config = config
         self.image_name = f"{Config.get_registry_url()}/comparison"
 
     def run(self):
@@ -75,6 +76,7 @@ class Comparison:
                     image=self.image_name,
                     command=["uv", "run", "python", "main.py"],
                     volumes=volumes,
+                    environment={"DATASET_NAME": self.config.dataset_name if self.config else ""},
                     remove=True,
                     detach=False,
                 )

@@ -1180,7 +1180,7 @@ def server(input, output, session):
                             style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
                         )
                     )
-                    for comparison, metrics in comparison_data.items():
+                    for comparison, metrics in comparison_data.get("comparisons", comparison_data).items():
                         title = (
                             comparison.replace("_vs_", " vs ").replace("_", " ").upper()
                         )

@@ -47,7 +47,8 @@ def _status_badge(status: str) -> str:
 
 def _render_comparison(results_json: dict) -> str:
     rows = ""
-    for pair_key, data in results_json.items():
+    comparisons = results_json.get("comparisons", results_json)
+    for pair_key, data in comparisons.items():
         tool_a, tool_b = pair_key.split("_vs_")
         topo = data.get("topology") or {}
         bl = data.get("branch_lengths") or {}

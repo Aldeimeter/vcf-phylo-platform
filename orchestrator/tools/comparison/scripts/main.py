@@ -232,8 +232,13 @@ def compare_trees(trees):
     output_path = "/results/results.json"
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
+    output = {
+        "dataset_name": os.environ.get("DATASET_NAME", ""),
+        "comparisons": results,
+    }
+
     with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(output, f, indent=2)
 
     print(f"Comparison results saved to {output_path}")
 

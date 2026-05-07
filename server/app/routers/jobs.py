@@ -48,6 +48,7 @@ async def create_job(request_body: CreateRequestBody):
         "FASTAPI_URL": os.environ.get("FASTAPI_URL", "http://fastapi:8000"),
         "LOKI_URL": os.environ.get("LOKI_URL", "http://loki:3100"),
         "REGISTRY_PORT": os.environ.get("REGISTRY_PORT", "5000"),
+        "DATASET_NAME": request_body.dataset_id,
     }
     if request_body.config:
         cfg = request_body.config
