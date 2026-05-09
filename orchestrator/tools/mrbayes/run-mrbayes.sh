@@ -72,7 +72,12 @@ EOF
 echo "Step 4: Running MrBayes Bayesian analysis..."
 echo "This may take a while depending on dataset size and number of generations..."
 
-mb mrbayes_commands.nex
+NP=$((NRUNS * NCHAINS))
+echo "Running with $NP MPI processes ($NRUNS runs × $NCHAINS chains)"
+mpirun --allow-run-as-root --oversubscribe -n $NP \
+    --mca plm_rsh_agent "" \
+    --mca btl vader,self \
+    mb mrbayes_commands.nex
 
 echo "Step 5: Converting consensus tree to Newick format..."
 

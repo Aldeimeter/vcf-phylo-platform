@@ -14,7 +14,8 @@ RUN apk add --no-cache \
     autoconf \
     automake \
     build-base \
-    readline-dev
+    readline-dev \
+    openmpi-dev
 
 WORKDIR /tmp
 
@@ -22,7 +23,7 @@ RUN git clone --depth=1 --branch v3.2.7 https://github.com/NBISweden/MrBayes.git
 
 WORKDIR /tmp/MrBayes
 
-RUN ./configure --prefix=/tmp/mrbayes-install && \
+RUN ./configure --prefix=/tmp/mrbayes-install --with-mpi && \
     make && \
     make install
 
@@ -32,7 +33,8 @@ FROM python:3.13.9-alpine3.22 AS final
 # Install runtime dependencies
 RUN apk add --no-cache \
     readline \
-    bash
+    bash \
+    openmpi
 
 # Copy tools from build stages
 COPY --from=vcf2phylip-installation /tmp/vcf2phylip/vcf2phylip.py /usr/local/bin/vcf2phylip
