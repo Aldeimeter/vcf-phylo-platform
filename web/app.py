@@ -797,7 +797,7 @@ def server(input, output, session):
             ),
             (
                 "Comparison",
-                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using topology (RF, weighted RF) and branch-length similarity (Pearson, Spearman) metrics.",
+                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using topology (RF) and branch-length similarity (Pearson, Spearman) metrics.",
             ),
         ]
 
@@ -1169,14 +1169,6 @@ def server(input, output, session):
                                     "Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches."
                                 ),
                             ),
-                            ui.div(
-                                ui.span(
-                                    "Topology + branch lengths (wRF): ", style="font-weight:600;"
-                                ),
-                                ui.span(
-                                    "Weighted Robinson-Foulds on normalized branch lengths — shared splits contribute |w1−w2|, unshared splits their full length. 100% = identical topology and proportions."
-                                ),
-                            ),
                             style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
                         )
                     )
@@ -1189,12 +1181,9 @@ def server(input, output, session):
                         lengths = metrics.get("branch_lengths") or {}
                         pearson_data = lengths.get("pearson") or {}
                         spearman_data = lengths.get("spearman") or {}
-                        wrf_data = metrics.get("weighted_rf") or {}
-
                         topo_pct = topo.get("similarity_pct")
                         bl_pct = pearson_data.get("similarity_pct")
                         spearman_pct = spearman_data.get("similarity_pct")
-                        wrf_pct = wrf_data.get("similarity_pct")
 
                         low_topo = topo_pct is not None and topo_pct < 50
 
@@ -1295,34 +1284,11 @@ def server(input, output, session):
                             style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
                         )
 
-                        wrf_block = ui.div(
-                            ui.span(
-                                "Topology + branch lengths (wRF)",
-                                style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
-                            ),
-                            ui.span(
-                                f"{wrf_pct}%" if wrf_pct is not None else "N/A",
-                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(wrf_pct)};display:block;",
-                            ),
-                            pct_bar(wrf_pct),
-                            ui.div(
-                                ui.span(
-                                    f"d={format_number(wrf_data['wrf_distance'])}",
-                                    style="color:#6c757d;font-size:0.8em;",
-                                )
-                                if "wrf_distance" in wrf_data
-                                else ui.span(""),
-                                style="margin-top:4px;",
-                            ),
-                            style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
-                        )
-
                         if low_topo:
                             branch_blocks = ui.div(
                                 ui.div(
                                     pearson_block,
                                     spearman_block,
-                                    wrf_block,
                                     style="display:flex;filter:blur(4px);user-select:none;",
                                 ),
                                 ui.div(
@@ -1340,7 +1306,6 @@ def server(input, output, session):
                             branch_blocks = ui.div(
                                 pearson_block,
                                 spearman_block,
-                                wrf_block,
                                 style="display:flex;flex:3;",
                             )
 

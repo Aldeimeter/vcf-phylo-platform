@@ -1,4 +1,3 @@
-import copy
 import json
 import math
 import os
@@ -138,45 +137,6 @@ def branch_length_similarity(tree1, tree2):
     }
 
 
-def weighted_rf(tree1, tree2):
-    """
-    Weighted Robinson-Foulds distance on normalized branch lengths.
-    Shared splits contribute |w1 - w2|; unshared splits contribute their full
-    normalized length. After normalization each tree sums to 1, so max wRF = 2.
-    Similarity = (1 - wRF/2) * 100%.
-    """
-    t1 = copy.deepcopy(tree1)
-    t2 = copy.deepcopy(tree2)
-    t2.migrate_taxon_namespace(t1.taxon_namespace)
-
-    for t in [t1, t2]:
-        total = sum(e.length for e in t.edges() if e.length is not None)
-        if total > 0:
-            for e in t.edges():
-                if e.length is not None:
-                    e.length /= total
-
-    t1.encode_bipartitions()
-    t2.encode_bipartitions()
-
-    def splits_dict(tree):
-        d = {}
-        for edge in tree.edges():
-            if edge.head_node is not None and edge.tail_node is not None:
-                d[edge.bipartition.split_bitmask] = edge.length if edge.length is not None else 0.0
-        return d
-
-    s1 = splits_dict(t1)
-    s2 = splits_dict(t2)
-
-    wrf = sum(abs(s1.get(sp, 0.0) - s2.get(sp, 0.0)) for sp in set(s1) | set(s2))
-    similarity = max(0.0, 1.0 - wrf / 2.0) * 100.0
-
-    return {
-        "similarity_pct": round(similarity, 2),
-        "wrf_distance": round(wrf, 4),
-    }
-
 
 def compare_trees(trees):
     results = {}
@@ -204,29 +164,19 @@ def compare_trees(trees):
                 print(f"Branch length comparison error ({key}): {e}")
                 lengths = {"error": f"Branch length comparison failed for {key}: {e}"}
 
-            wrf = None
-            try:
-                wrf = weighted_rf(t1, t2)
-            except Exception as e:
-                print(f"Weighted RF error ({key}): {e}")
-                wrf = {"error": str(e)}
-
             results[key] = {
                 "topology": topo,
                 "branch_lengths": lengths,
-                "weighted_rf": wrf,
             }
 
             if topo and "similarity_pct" in topo:
                 t_pct = topo["similarity_pct"]
                 p_pct = (lengths.get("pearson") or {}).get("similarity_pct") if lengths else None
                 s_pct = (lengths.get("spearman") or {}).get("similarity_pct") if lengths else None
-                w_pct = wrf.get("similarity_pct") if wrf else None
                 print(
                     f"  topology: {t_pct}%"
                     f"  pearson: {p_pct if p_pct is not None else 'N/A'}%"
                     f"  spearman: {s_pct if s_pct is not None else 'N/A'}%"
-                    f"  wRF: {w_pct if w_pct is not None else 'N/A'}%"
                 )
 
     output_path = "/results/results.json"

@@ -54,12 +54,9 @@ def _render_comparison(results_json: dict) -> str:
         bl = data.get("branch_lengths") or {}
         pearson = bl.get("pearson") or {}
         spearman = bl.get("spearman") or {}
-        wrf = data.get("weighted_rf") or {}
-
         topo_pct = topo.get("similarity_pct")
         pearson_pct = pearson.get("similarity_pct")
         spearman_pct = spearman.get("similarity_pct")
-        wrf_pct = wrf.get("similarity_pct")
 
         topo_detail = ""
         if "raw_rf" in topo:
@@ -81,19 +78,12 @@ def _render_comparison(results_json: dict) -> str:
         elif "reason" in spearman:
             spearman_detail = spearman["reason"]
 
-        wrf_detail = ""
-        if "wrf_distance" in wrf:
-            wrf_detail = f'd={wrf["wrf_distance"]}'
-        elif "error" in wrf:
-            wrf_detail = f'error: {wrf["error"]}'
-
         rows += f"""
         <tr>
           <td><strong>{tool_a}</strong> vs <strong>{tool_b}</strong></td>
           <td>{_pct_badge(topo_pct)}<br><small>{topo_detail}</small></td>
           <td>{_pct_badge(pearson_pct)}<br><small>{pearson_detail}</small></td>
           <td>{_pct_badge(spearman_pct)}<br><small>{spearman_detail}</small></td>
-          <td>{_pct_badge(wrf_pct)}<br><small>{wrf_detail}</small></td>
         </tr>"""
 
     return f"""
@@ -102,7 +92,6 @@ def _render_comparison(results_json: dict) -> str:
         <tr><td><strong>Topology (RF)</strong></td><td>Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure.</td></tr>
         <tr><td><strong>Branch lengths (Pearson)</strong></td><td>Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale.</td></tr>
         <tr><td><strong>Branch lengths (Spearman)</strong></td><td>Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches.</td></tr>
-        <tr><td><strong>Topology + branch lengths (wRF)</strong></td><td>Weighted Robinson-Foulds on normalized branch lengths — shared splits contribute |w1−w2|, unshared splits their full length. 100% = identical topology and proportions.</td></tr>
       </tbody>
     </table>
     <table>
@@ -112,7 +101,6 @@ def _render_comparison(results_json: dict) -> str:
           <th>Topology (RF)</th>
           <th>Branch lengths (Pearson)</th>
           <th>Branch lengths (Spearman)</th>
-          <th>Topology + branch lengths (wRF)</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
