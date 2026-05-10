@@ -797,7 +797,7 @@ def server(input, output, session):
             ),
             (
                 "Comparison",
-                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using topology (RF) and branch-length similarity (Pearson, Spearman) metrics.",
+                "Compares the trees produced by IQ-TREE, FastReer, and MrBayes using topology (RF), branch-length similarity (Pearson, Spearman), and NTD metrics.",
             ),
         ]
 
@@ -1169,6 +1169,15 @@ def server(input, output, session):
                                     "Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches."
                                 ),
                             ),
+                            ui.div(
+                                ui.span(
+                                    "Branch lengths (NTD): ",
+                                    style="font-weight:600;",
+                                ),
+                                ui.span(
+                                    "Normalized Tree Distance (Zheng et al. 2015) — branch lengths scaled to sum=1, then summed absolute differences. Only computed when topologies are identical (RF=0)."
+                                ),
+                            ),
                             style="font-size:0.8em;color:#6c757d;background:#f8f9fa;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;flex-direction:column;gap:4px;",
                         )
                     )
@@ -1181,11 +1190,11 @@ def server(input, output, session):
                         lengths = metrics.get("branch_lengths") or {}
                         pearson_data = lengths.get("pearson") or {}
                         spearman_data = lengths.get("spearman") or {}
+                        ntd_data = metrics.get("ntd") or {}
                         topo_pct = topo.get("similarity_pct")
                         bl_pct = pearson_data.get("similarity_pct")
                         spearman_pct = spearman_data.get("similarity_pct")
-
-                        low_topo = topo_pct is not None and topo_pct < 50
+                        ntd_pct = ntd_data.get("similarity_pct")
 
                         def pct_color(pct):
                             if pct is None:
@@ -1284,30 +1293,37 @@ def server(input, output, session):
                             style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
                         )
 
-                        if low_topo:
-                            branch_blocks = ui.div(
-                                ui.div(
-                                    pearson_block,
-                                    spearman_block,
-                                    style="display:flex;filter:blur(4px);user-select:none;",
+                        ntd_block = ui.div(
+                            ui.span(
+                                "Branch lengths (NTD)",
+                                style="font-weight:600;font-size:0.9em;display:block;min-height:2.8em;",
+                            ),
+                            ui.span(
+                                f"{ntd_pct}%" if ntd_pct is not None else "N/A",
+                                style=f"font-size:1.8em;font-weight:700;color:{pct_color(ntd_pct)};display:block;",
+                            ),
+                            pct_bar(ntd_pct),
+                            ui.div(
+                                ui.span(
+                                    f"d={format_number(ntd_data['ntd'])}",
+                                    style="color:#6c757d;font-size:0.8em;",
+                                )
+                                if "ntd" in ntd_data
+                                else ui.span(
+                                    ntd_data.get("reason", ""),
+                                    style="color:#6c757d;font-size:0.8em;",
                                 ),
-                                ui.div(
-                                    "⚠ Topology similarity below 50% — branch length metrics are unreliable. ",
-                                    ui.span(
-                                        "Reveal anyway",
-                                        style="text-decoration:underline;cursor:pointer;",
-                                    ),
-                                    style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(248,249,250,0.80);font-size:0.82em;color:#92400e;font-weight:600;cursor:pointer;padding:0 12px;text-align:center;",
-                                    **{"onclick": "var w=this.parentElement;w.children[0].style.filter='none';w.children[0].style.userSelect='';this.remove();"},
-                                ),
-                                style="position:relative;flex:3;display:flex;flex-direction:column;",
-                            )
-                        else:
-                            branch_blocks = ui.div(
-                                pearson_block,
-                                spearman_block,
-                                style="display:flex;flex:3;",
-                            )
+                                style="margin-top:4px;",
+                            ),
+                            style="flex:1;padding:12px 16px;border-left:1px solid #e9ecef;",
+                        )
+
+                        branch_blocks = ui.div(
+                            pearson_block,
+                            spearman_block,
+                            ntd_block,
+                            style="display:flex;flex:3;",
+                        )
 
                         content.append(
                             ui.div(

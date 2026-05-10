@@ -1,3 +1,4 @@
+import copy
 import json
 import math
 import os
@@ -136,6 +137,45 @@ def branch_length_similarity(tree1, tree2):
         "spearman": to_result(spearman(v1, v2)),
     }
 
+def ntd(tree1, tree2):
+    """
+    Normalized Tree Distance (Zheng et al. 2015).
+    Branch lengths normalized by total tree length; NTD = sum |b1_norm - b2_norm|.
+    Only meaningful when trees have identical topology (RF = 0).
+    Range [0, 2]; similarity_pct = max(0, (1 - NTD/2) * 100).
+    """
+    t1 = copy.deepcopy(tree1)
+    t2 = copy.deepcopy(tree2)
+    t2.migrate_taxon_namespace(t1.taxon_namespace)
+
+    for t in [t1, t2]:
+        total = sum(e.length for e in t.edges() if e.length is not None)
+        if total == 0:
+            return {"similarity_pct": None, "reason": "zero_length_tree"}
+        for e in t.edges():
+            if e.length is not None:
+                e.length /= total
+
+    t1.encode_bipartitions()
+    t2.encode_bipartitions()
+
+    def splits_dict(tree):
+        d = {}
+        for edge in tree.edges():
+            if edge.head_node is not None and edge.tail_node is not None:
+                d[edge.bipartition.split_bitmask] = edge.length if edge.length is not None else 0.0
+        return d
+
+    s1 = splits_dict(t1)
+    s2 = splits_dict(t2)
+    shared = set(s1.keys()) & set(s2.keys())
+    ntd_val = sum(abs(s1[sp] - s2[sp]) for sp in shared)
+    similarity = max(0.0, (1.0 - ntd_val / 2.0) * 100.0)
+
+    return {
+        "similarity_pct": round(similarity, 2),
+        "ntd": round(ntd_val, 4),
+    }
 
 
 def compare_trees(trees):
@@ -157,26 +197,43 @@ def compare_trees(trees):
                 print(f"Topology comparison error ({key}): {e}")
                 topo = {"error": f"Topology comparison failed for {key}: {e}"}
 
-            lengths = None
-            try:
-                lengths = branch_length_similarity(t1, t2)
-            except Exception as e:
-                print(f"Branch length comparison error ({key}): {e}")
-                lengths = {"error": f"Branch length comparison failed for {key}: {e}"}
+            topo_pct = topo.get("similarity_pct") if topo else None
+            raw_rf = topo.get("raw_rf") if topo else None
+
+            na_topo = {"similarity_pct": None, "reason": "topology_too_different"}
+            if topo_pct is not None and topo_pct >= 75:
+                try:
+                    lengths = branch_length_similarity(t1, t2)
+                except Exception as e:
+                    print(f"Branch length comparison error ({key}): {e}")
+                    lengths = {"error": str(e)}
+            else:
+                lengths = {"pearson": na_topo, "spearman": na_topo}
+
+            if raw_rf == 0:
+                try:
+                    ntd_result = ntd(t1, t2)
+                except Exception as e:
+                    print(f"NTD error ({key}): {e}")
+                    ntd_result = {"error": str(e)}
+            else:
+                ntd_result = {"similarity_pct": None, "reason": "topologies_differ"}
 
             results[key] = {
                 "topology": topo,
                 "branch_lengths": lengths,
+                "ntd": ntd_result,
             }
 
-            if topo and "similarity_pct" in topo:
-                t_pct = topo["similarity_pct"]
-                p_pct = (lengths.get("pearson") or {}).get("similarity_pct") if lengths else None
-                s_pct = (lengths.get("spearman") or {}).get("similarity_pct") if lengths else None
+            if topo_pct is not None:
+                p_pct = (lengths.get("pearson") or {}).get("similarity_pct") if isinstance(lengths, dict) else None
+                s_pct = (lengths.get("spearman") or {}).get("similarity_pct") if isinstance(lengths, dict) else None
+                n_pct = ntd_result.get("similarity_pct")
                 print(
-                    f"  topology: {t_pct}%"
+                    f"  topology: {topo_pct}%"
                     f"  pearson: {p_pct if p_pct is not None else 'N/A'}%"
                     f"  spearman: {s_pct if s_pct is not None else 'N/A'}%"
+                    f"  NTD: {n_pct if n_pct is not None else 'N/A'}%"
                 )
 
     output_path = "/results/results.json"

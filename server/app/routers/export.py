@@ -54,9 +54,11 @@ def _render_comparison(results_json: dict) -> str:
         bl = data.get("branch_lengths") or {}
         pearson = bl.get("pearson") or {}
         spearman = bl.get("spearman") or {}
+        ntd = data.get("ntd") or {}
         topo_pct = topo.get("similarity_pct")
         pearson_pct = pearson.get("similarity_pct")
         spearman_pct = spearman.get("similarity_pct")
+        ntd_pct = ntd.get("similarity_pct")
 
         topo_detail = ""
         if "raw_rf" in topo:
@@ -78,20 +80,30 @@ def _render_comparison(results_json: dict) -> str:
         elif "reason" in spearman:
             spearman_detail = spearman["reason"]
 
+        ntd_detail = ""
+        if "ntd" in ntd:
+            ntd_detail = f'd={ntd["ntd"]}'
+        elif "reason" in ntd:
+            ntd_detail = ntd["reason"]
+        elif "error" in ntd:
+            ntd_detail = f'error: {ntd["error"]}'
+
         rows += f"""
         <tr>
           <td><strong>{tool_a}</strong> vs <strong>{tool_b}</strong></td>
           <td>{_pct_badge(topo_pct)}<br><small>{topo_detail}</small></td>
           <td>{_pct_badge(pearson_pct)}<br><small>{pearson_detail}</small></td>
           <td>{_pct_badge(spearman_pct)}<br><small>{spearman_detail}</small></td>
+          <td>{_pct_badge(ntd_pct)}<br><small>{ntd_detail}</small></td>
         </tr>"""
 
     return f"""
     <table class="legend-table">
       <tbody>
         <tr><td><strong>Topology (RF)</strong></td><td>Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure.</td></tr>
-        <tr><td><strong>Branch lengths (Pearson)</strong></td><td>Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale.</td></tr>
-        <tr><td><strong>Branch lengths (Spearman)</strong></td><td>Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches.</td></tr>
+        <tr><td><strong>Branch lengths (Pearson)</strong></td><td>Pearson correlation of patristic distances — only computed when topology similarity ≥ 75%.</td></tr>
+        <tr><td><strong>Branch lengths (Spearman)</strong></td><td>Spearman rank correlation of patristic distances — only computed when topology similarity ≥ 75%.</td></tr>
+        <tr><td><strong>Branch lengths (NTD)</strong></td><td>Normalized Tree Distance (Zheng et al. 2015) — branch lengths scaled to sum=1, then summed absolute differences. Only computed when topologies are identical (RF=0).</td></tr>
       </tbody>
     </table>
     <table>
@@ -101,6 +113,7 @@ def _render_comparison(results_json: dict) -> str:
           <th>Topology (RF)</th>
           <th>Branch lengths (Pearson)</th>
           <th>Branch lengths (Spearman)</th>
+          <th>Branch lengths (NTD)</th>
         </tr>
       </thead>
       <tbody>{rows}</tbody>
