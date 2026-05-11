@@ -1187,7 +1187,7 @@ def server(input, output, session):
                                     style="font-weight:600;",
                                 ),
                                 ui.span(
-                                    "Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale."
+                                    "Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale. Only computed when topology similarity ≥ 75%."
                                 ),
                             ),
                             ui.div(
@@ -1196,7 +1196,7 @@ def server(input, output, session):
                                     style="font-weight:600;",
                                 ),
                                 ui.span(
-                                    "Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches."
+                                    "Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches. Only computed when topology similarity ≥ 75%."
                                 ),
                             ),
                             ui.div(

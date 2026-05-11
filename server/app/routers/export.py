@@ -101,8 +101,8 @@ def _render_comparison(results_json: dict) -> str:
     <table class="legend-table">
       <tbody>
         <tr><td><strong>Topology (RF)</strong></td><td>Robinson-Foulds distance on unrooted trees — counts differing bipartitions. 100% = identical branching structure.</td></tr>
-        <tr><td><strong>Branch lengths (Pearson)</strong></td><td>Pearson correlation of patristic distances — only computed when topology similarity ≥ 75%.</td></tr>
-        <tr><td><strong>Branch lengths (Spearman)</strong></td><td>Spearman rank correlation of patristic distances — only computed when topology similarity ≥ 75%.</td></tr>
+        <tr><td><strong>Branch lengths (Pearson)</strong></td><td>Pearson correlation of normalized patristic distances — measures whether relative branch proportions agree, regardless of unit scale. Only computed when topology similarity ≥ 75%.</td></tr>
+        <tr><td><strong>Branch lengths (Spearman)</strong></td><td>Spearman rank correlation of normalized patristic distances — same as Pearson but rank-based, more robust to skewed branch length distributions and outlier branches. Only computed when topology similarity ≥ 75%.</td></tr>
         <tr><td><strong>Branch lengths (NTD)</strong></td><td>Normalized Tree Distance (Zheng et al. 2015) — branch lengths scaled to sum=1, then summed absolute differences. Only computed when topologies are identical (RF=0).</td></tr>
       </tbody>
     </table>
@@ -118,6 +118,49 @@ def _render_comparison(results_json: dict) -> str:
       </thead>
       <tbody>{rows}</tbody>
     </table>"""
+
+
+def _render_convergence(conv_data: dict, pdf_mode: bool = False) -> str:
+    converged = conv_data.get("converged", False)
+    threshold = conv_data.get("threshold", 1.01)
+    n_runs = conv_data.get("n_runs", 2)
+    badge_cls = "badge-high" if converged else "badge-low"
+    badge_text = "Converged" if converged else "Not converged"
+
+    param_rows = ""
+    for param, data in conv_data.get("parameters", {}).items():
+        psrf = data.get("psrf", "—")
+        p_converged = data.get("converged", False)
+        mark = "✓" if p_converged else "✗"
+        cls = "badge-high" if p_converged else "badge-low"
+        param_rows += f"<tr><td>{param}</td><td>{psrf}</td><td><span class='badge {cls}'>{mark}</span></td></tr>"
+
+    if param_rows:
+        if pdf_mode:
+            params_table = f"""
+    <table>
+      <thead><tr><th>Parameter</th><th>PSRF</th><th>Converged</th></tr></thead>
+      <tbody>{param_rows}</tbody>
+    </table>"""
+        else:
+            params_table = f"""
+    <details>
+      <summary>Per-parameter PSRF values</summary>
+      <table>
+        <thead><tr><th>Parameter</th><th>PSRF</th><th>Converged</th></tr></thead>
+        <tbody>{param_rows}</tbody>
+      </table>
+    </details>"""
+    else:
+        params_table = ""
+
+    return f"""
+    <div class="convergence-block">
+      <span class="conv-label">MrBayes Convergence</span>
+      <span class="badge {badge_cls}">{badge_text}</span>
+      <span class="conv-detail">Gelman-Rubin PSRF across {n_runs} runs (threshold &le; {threshold})</span>
+    </div>
+    {params_table}"""
 
 
 def _render_timing(tools_timing) -> str:
@@ -454,6 +497,9 @@ _CSS = """
     .legend-table td:first-child { white-space: nowrap; color: #495057; }
     details { margin-top: 0.75rem; }
     summary { font-size: 0.8rem; color: #6c757d; cursor: pointer; }
+    .convergence-block { display: flex; align-items: center; gap: 12px; background: #fff; border: 1px solid #dee2e6; border-radius: 6px; padding: 12px 18px; margin-bottom: 6px; }
+    .conv-label { font-weight: 600; font-size: 0.9rem; color: #374151; }
+    .conv-detail { color: #94a3b8; font-size: 0.78rem; }
     pre.nwk { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;
               padding: 0.5rem 0.75rem; font-size: 0.75rem; overflow-x: auto;
               white-space: pre-wrap; word-break: break-all; margin: 0.5rem 0 0; }
@@ -488,6 +534,20 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
     timing_html = _render_timing(job.tools_timing)
 
     trees = _collect_nwk_trees(results_path)
+
+    conv_data = None
+    conv_path = results_path / "mrbayes" / "convergence.json"
+    if conv_path.exists():
+        try:
+            conv_data = json.loads(conv_path.read_text())
+        except Exception as e:
+            logger.warning(f"Failed to parse convergence data at {conv_path}: {e}")
+
+    convergence_section = f"""
+  <section>
+    <h2>MrBayes convergence</h2>
+    {_render_convergence(conv_data, pdf_mode=pdf_mode)}
+  </section>""" if conv_data else ""
 
     # Tree section: inline SVG for PDF, D3 containers for HTML
     tree_sections = ""
@@ -577,6 +637,8 @@ def render_html_report(job, results_path: Path, pdf_mode: bool = False) -> str:
     <h2>Tool timing</h2>
     {timing_html}
   </section>
+
+  {convergence_section}
 
   <section>
     <h2>Tree comparison</h2>
