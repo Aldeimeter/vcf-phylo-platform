@@ -1074,6 +1074,12 @@ def server(input, output, session):
                 )
             )
 
+            # MrBayes convergence data (fetched once, used inside the tree loop)
+            conv_data = None
+            convergence_json = results_data.get("convergence_json")
+            if convergence_json:
+                conv_data = fetch_results_json(convergence_json.get("url", ""))
+
             # NWK Files
             nwk_files = results_data.get("nwk_files", [])
             if nwk_files:
@@ -1108,6 +1114,30 @@ def server(input, output, session):
                             style="display:none;",
                         )
                     )
+
+                    if file_info.get("tool") == "mrbayes" and conv_data:
+                        converged = conv_data.get("converged", False)
+                        threshold = conv_data.get("threshold", 1.01)
+                        n_runs = conv_data.get("n_runs", 2)
+                        badge_style = (
+                            "background:#d1fae5;color:#065f46;"
+                            if converged
+                            else "background:#fee2e2;color:#991b1b;"
+                        )
+                        content.append(
+                            ui.div(
+                                ui.span("MrBayes Convergence", style="font-weight:600;font-size:.9rem;color:#374151;"),
+                                ui.span(
+                                    "Converged" if converged else "Not converged",
+                                    style=f"display:inline-block;padding:2px 10px;border-radius:12px;font-size:.75rem;font-weight:700;{badge_style}",
+                                ),
+                                ui.span(
+                                    f"Gelman-Rubin PSRF across {n_runs} runs (threshold ≤ {threshold})",
+                                    style="color:#94a3b8;font-size:.78rem;",
+                                ),
+                                style="background:white;border:1px solid #e2e8f0;border-radius:10px;padding:12px 18px;display:flex;align-items:center;gap:12px;margin-bottom:6px;",
+                            )
+                        )
 
                     content.append(
                         ui.div(
@@ -1341,6 +1371,7 @@ def server(input, output, session):
                                 style="padding:0;",
                             )
                         )
+
 
         return ui.div(*content)
 

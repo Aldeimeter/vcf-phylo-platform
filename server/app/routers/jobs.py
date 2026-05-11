@@ -135,6 +135,7 @@ async def get_job_results(job_id: str):
 
     nwk_files = []
     results_json = None
+    convergence_json = None
 
     for tool_dir in results_path.iterdir():
         if tool_dir.is_dir():
@@ -153,7 +154,14 @@ async def get_job_results(job_id: str):
                     "filename": "results.json",
                     "url": f"/static/results/{job_id}/{tool_dir.name}/results.json",
                 }
-    return {"job_id": job_id, "nwk_files": nwk_files, "results_json": results_json}
+            if tool_dir.name == "mrbayes":
+                conv_file = tool_dir / "convergence.json"
+                if conv_file.exists():
+                    convergence_json = {
+                        "url": f"/static/results/{job_id}/mrbayes/convergence.json"
+                    }
+
+    return {"job_id": job_id, "nwk_files": nwk_files, "results_json": results_json, "convergence_json": convergence_json}
 
 
 @router.get("")

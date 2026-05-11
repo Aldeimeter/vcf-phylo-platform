@@ -79,12 +79,15 @@ mpirun --allow-run-as-root --oversubscribe -n $NP \
     --mca btl vader,self \
     mb mrbayes_commands.nex
 
-echo "Step 5: Converting consensus tree to Newick format..."
+echo "Step 5: Computing convergence diagnostics (PSRF)..."
+python3 /app/utils/parse_convergence.py || echo "Warning: Convergence diagnostics failed"
+
+echo "Step 6: Converting consensus tree to Newick format..."
 
 python3 /app/utils/nexus2nwk.py
 
 
-echo "Step 6: Copying results to output directory..."
+echo "Step 7: Copying results to output directory..."
 
 TREEFILE=$(ls *.nwk 2>/dev/null | head -n1)
 if [ -n "$TREEFILE" ]; then 
